@@ -1,0 +1,39 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: "en-US"
+reviews:
+  profile: "chill"
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  review_status: true
+  auto_review:
+    enabled: true
+    drafts: false
+    base_branches:
+      - "main"
+  path_filters:
+    - "!.venv/**"
+    - "!**/__pycache__/**"
+    - "!**/*.pyc"
+  path_instructions:
+    - path: "**/*"
+      instructions: |
+        This repository is a trading bot. Keep the overall review tone practical (profile is "chill"),
+        but be extremely strict when flagging issues in these areas:
+
+        - Secrets and API keys: Treat any exposed, hard-coded, or logged credentials as critical.
+          Flag API keys, tokens, passwords, signing secrets, private URLs with embedded auth, and
+          unsafe defaults (e.g. committed .env samples with real values). Flag logging or error
+          messages that may leak credentials or session material.
+
+        - Financial numeric correctness: Flag use of binary floating-point for money, prices,
+          quantities, fees, or PnL when precision or rounding matters. Watch for accumulation
+          error, unsafe `float` equality/ordering on monetary values, mixed Decimal/float, and
+          rounding that does not match domain rules (bankers vs truncate, etc.).
+
+        - Network and I/O robustness: Flag HTTP/WebSocket/broker/API calls without adequate error
+          handling, timeouts, cancellation, or bounded retries. Call out bare excepts that swallow
+          connectivity failures, missing handling for rate limits and transient errors, and code
+          that assumes the network always succeeds.
+chat:
+  auto_reply: true
