@@ -1,0 +1,71 @@
+# AGENTS.md — Trading Bot (Primary Source of Truth)
+
+This file is the authoritative guide for all coding agents working in this repository.
+
+## Project Overview
+
+This is a weekly trend/momentum trading bot that generates BUY/HOLD/SELL signals for a single ETF (default: VWCE.DE) using 50-day MA, 200-day MA, and 14-day RSI indicators. It runs on a weekly cadence, supports both IBKR paper and live trading via `ib_insync`, and is deliberately kept simple: no ORM, no complex frameworks. The project is in Phase 1 (data + signals); scheduling, monitoring, and multi-asset support are planned for later phases.
+
+## Repository Structure
+
+```
+trading_bot/          Core package
+  __init__.py         Package marker
+  data.py             OHLCV price data fetching via yfinance
+  signals.py          Indicator computation (MA, RSI) and Phase 1 signal rules
+  broker_ibkr.py      Thin IBKR order execution wrapper via ib_insync
+  assets.py           Shared asset universe mapping Yahoo Finance to IBKR symbols
+  backtest.py         Fixed-size single-asset backtester using Phase 1 rules
+main.py               CLI entry point: signal check, backtest, optional IBKR execution
+requirements.txt      Runtime dependencies
+trading-bot-plan.md   High-level project and strategy plan
+tests/                Unit tests (coming soon)
+scheduler/            Scheduling infrastructure (coming soon)
+runweekly.py          Weekly cron entry point (coming soon)
+```
+
+## Development Commands
+
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Run tests
+pytest tests/                                        # coming soon
+
+# Run linter
+ruff check .                                         # coming soon (add ruff to dev deps)
+
+# Run type checker
+mypy trading_bot/ main.py                            # coming soon (add mypy to dev deps)
+
+# Run signal check (dry — no orders placed)
+python main.py --asset vwce
+
+# Run backtest
+python main.py --asset vwce --backtest
+
+# Run weekly (dry)
+DRYRUN=true python runweekly.py                      # coming soon
+```
+
+## Conventions
+
+- **Python 3.12**; no ORM, no complex frameworks.
+- **Config via `.env`** (see `.env.example` — coming soon); never hardcode credentials or account IDs.
+- **Logging**: each module uses `logging.getLogger(__name__)` — no `print()` in library code. `main.py` may print to stdout for human-readable CLI output.
+- **Tests**: use `pytest`; no real network calls in unit tests — mock `yf.Ticker.history` for data tests.
+- **PR size target**: ~200 lines, hard limit 500 lines (tests included).
+
+## Workflow
+
+- One Linear ticket = one PR.
+- Branch naming: `kua-{number}-short-description` (e.g. `kua-19-agent-docs`).
+- All CodeRabbit review comments must be resolved before requesting human review.
+- Do not merge your own PRs.
+
+## What NOT to Do
+
+- Do not place real IBKR orders without `--ibkr-enable` **and** `DRYRUN=false` being explicitly set.
+- Do not commit `.env` or `.db` files.
+- Do not modify `scheduler/` files without reading `scheduler/README.md` first (coming soon).
