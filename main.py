@@ -99,7 +99,7 @@ def main() -> None:
         yahoo_symbol = args.symbol
         ib_symbol = args.ibkr_symbol
 
-    print(f"=== Trading Bot Phase 1 — Data + Signal ===")
+    print("=== Trading Bot Phase 1 — Data + Signal ===")
     print(f"Date: {date.today().isoformat()}")
     print(f"Asset: {args.asset or yahoo_symbol}")
     print()

@@ -36,6 +36,7 @@ def _ohlcv_df(prices: pd.Series, *, adj_close: pd.Series | None = None) -> pd.Da
 
 class TestComputeMovingAverages:
     def test_nan_before_window_fills(self):
+        """First window-1 values are NaN; all values from index window-1 onward are finite."""
         prices = _price_series(50)
         window = 10
         ma = compute_moving_averages(prices, window)
@@ -43,6 +44,7 @@ class TestComputeMovingAverages:
         assert ma.iloc[window - 1 :].notna().all()
 
     def test_correct_value_at_window_boundary(self):
+        """Constant price series produces MA equal to that price at and after the window boundary."""
         # Constant prices → MA == price everywhere it is defined
         prices = pd.Series([5.0] * 20)
         ma = compute_moving_averages(prices, 5)
@@ -50,6 +52,7 @@ class TestComputeMovingAverages:
         assert ma.iloc[-1] == pytest.approx(5.0)
 
     def test_manual_calculation(self):
+        """MA values match hand-calculated rolling means for a known input sequence."""
         prices = pd.Series([1.0, 2.0, 3.0, 4.0, 5.0])
         ma = compute_moving_averages(prices, 3)
         assert ma.iloc[2] == pytest.approx(2.0)   # (1+2+3)/3
@@ -77,7 +80,7 @@ class TestComputeRsi:
 
     def test_rsi_zero_for_all_losses(self):
         """Strictly decreasing prices → avg_gain == 0 → RSI == 0 after first delta."""
-        # prices: 100, 99, 98, ... (constant step −1)
+        # prices: 100, 99, 98, ... (constant step -1)
         prices = pd.Series([100.0 - i for i in range(50)])
         rsi = compute_rsi(prices, window=5)
         # Index 0: NaN (no prior delta); index 1 onward: RSI == 0
@@ -118,6 +121,7 @@ class TestComputeRsi:
 
 class TestEnrichWithIndicators:
     def test_output_columns_present(self):
+        """Result DataFrame contains ma_short, ma_long, and rsi columns."""
         df = _ohlcv_df(_price_series(250))
         result = enrich_with_indicators(df)
         assert "ma_short" in result.columns
@@ -125,6 +129,7 @@ class TestEnrichWithIndicators:
         assert "rsi" in result.columns
 
     def test_uses_adj_close_when_available(self):
+        """Indicators are computed from adj_close when it contains non-NaN values."""
         prices = _price_series(250)
         adj = prices * 0.9   # deliberately different from close
         df = _ohlcv_df(prices, adj_close=adj)
@@ -144,10 +149,11 @@ class TestEnrichWithIndicators:
         pd.testing.assert_series_equal(result["ma_short"], expected_ma, check_names=False)
 
     def test_does_not_mutate_input(self):
+        """enrich_with_indicators must not alter the caller's DataFrame in any way."""
         df = _ohlcv_df(_price_series(250))
-        original_cols = set(df.columns)
+        original = df.copy(deep=True)
         enrich_with_indicators(df)
-        assert set(df.columns) == original_cols
+        pd.testing.assert_frame_equal(df, original)
 
 
 # ---------------------------------------------------------------------------
@@ -156,19 +162,24 @@ class TestEnrichWithIndicators:
 
 class TestRulePhase1SignalForRow:
     def _row(self, price: float, ma_short: float, ma_long: float) -> pd.Series:
+        """Build a minimal row Series with the three columns the rule function reads."""
         return pd.Series({"close": price, "ma_short": ma_short, "ma_long": ma_long})
 
     def test_buy_when_price_above_both_mas(self):
+        """BUY when price is above both the short and long moving averages."""
         assert rule_phase1_signal_for_row(self._row(110, 100, 90)) == "BUY"
 
     def test_sell_when_price_below_ma_long(self):
+        """SELL when price falls below the long moving average."""
         assert rule_phase1_signal_for_row(self._row(80, 90, 85)) == "SELL"
 
     def test_hold_when_above_ma_long_but_below_ma_short(self):
+        """HOLD when price is above the long MA but still below the short MA."""
         # price > ma_long (90) but price < ma_short (100)
         assert rule_phase1_signal_for_row(self._row(95, 100, 90)) == "HOLD"
 
     def test_hold_when_ma_is_nan(self):
+        """HOLD when either MA is NaN (window not yet filled)."""
         assert rule_phase1_signal_for_row(self._row(100, float("nan"), float("nan"))) == "HOLD"
 
 
@@ -178,6 +189,7 @@ class TestRulePhase1SignalForRow:
 
 class TestLatestSignal:
     def _df(self, price: float, ma_short: float, ma_long: float) -> pd.DataFrame:
+        """Build a 5-row DataFrame where only the last row has the given signal values."""
         n = 5
         idx = pd.date_range("2020-01-01", periods=n, freq="D")
         return pd.DataFrame(
@@ -191,19 +203,23 @@ class TestLatestSignal:
         )
 
     def test_returns_last_row_timestamp(self):
+        """latest_signal returns the index timestamp of the final row."""
         df = self._df(price=110, ma_short=100, ma_long=90)
         ts, _, _ = latest_signal(df)
         assert ts == df.index[-1]
 
     def test_returns_buy_signal(self):
+        """latest_signal returns BUY when the last row satisfies the BUY conditions."""
         _, sig, _ = latest_signal(self._df(price=110, ma_short=100, ma_long=90))
         assert sig == "BUY"
 
     def test_returns_sell_signal(self):
+        """latest_signal returns SELL when the last row satisfies the SELL conditions."""
         _, sig, _ = latest_signal(self._df(price=80, ma_short=90, ma_long=85))
         assert sig == "SELL"
 
     def test_returns_last_row_series(self):
+        """latest_signal returns the actual last row Series unchanged."""
         df = self._df(price=110, ma_short=100, ma_long=90)
         _, _, row = latest_signal(df)
         pd.testing.assert_series_equal(row, df.iloc[-1])
