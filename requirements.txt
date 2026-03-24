@@ -2,6 +2,3 @@ numpy>=1.26.0
 pandas>=2.2.0
 yfinance>=0.2.50
 ib_insync>=0.9.86
-pytest>=8.0.0
-ruff>=0.4.0
-mypy>=1.10.0
