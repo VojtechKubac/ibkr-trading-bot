@@ -67,6 +67,6 @@ DRYRUN=true python runweekly.py                      # coming soon
 
 ## What NOT to Do
 
-- Do not place real IBKR orders without `--ibkr-enable` **and** `DRYRUN=false` being explicitly set.
-- Do not commit `.env` or `.db` files.
-- Do not modify `scheduler/` files without reading `scheduler/README.md` first (coming soon).
+- Never place real IBKR orders unless `--ibkr-enable` **and** `DRYRUN=false` are explicitly set.
+- Never commit `.env` or `.db` files.
+- Avoid modifying `scheduler/` files before reading `scheduler/README.md` (coming soon).
