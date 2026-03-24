@@ -8,6 +8,7 @@ from trading_bot.signals import IndicatorConfig, enrich_with_indicators, latest_
 from trading_bot.broker_ibkr import IBKRConfig, execute_signal_as_market_order
 from trading_bot.assets import get_asset
 from trading_bot.backtest import run_backtest_fixed_size
+from trading_bot import config
 
 
 def parse_args() -> argparse.Namespace:
@@ -59,24 +60,24 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--ibkr-host",
-        default="127.0.0.1",
-        help="Host where TWS / IB Gateway is running (default: 127.0.0.1).",
+        default=config.IBKR_HOST,
+        help=f"Host where TWS / IB Gateway is running (default: {config.IBKR_HOST}).",
     )
     parser.add_argument(
         "--ibkr-port",
         type=int,
-        default=7497,
-        help="Port for TWS / IB Gateway (default: 7497 for paper trading).",
+        default=config.IBKR_PORT,
+        help=f"Port for TWS / IB Gateway (default: {config.IBKR_PORT}).",
     )
     parser.add_argument(
         "--ibkr-client-id",
         type=int,
-        default=1,
-        help="Client ID for the IBKR API connection (default: 1).",
+        default=config.IBKR_CLIENT_ID,
+        help=f"Client ID for the IBKR API connection (default: {config.IBKR_CLIENT_ID}).",
     )
     parser.add_argument(
         "--ibkr-account",
-        default=None,
+        default=config.IBKR_ACCOUNT,
         help="Optional IBKR account ID; if omitted, IBKR will use the default account.",
     )
     parser.add_argument(

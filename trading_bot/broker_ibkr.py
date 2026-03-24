@@ -5,17 +5,19 @@ from typing import Literal, Optional
 
 from ib_insync import IB, Contract, MarketOrder, Stock
 
+from trading_bot import config
+
 Signal = Literal["BUY", "SELL", "HOLD"]
 
 
 @dataclass
 class IBKRConfig:
-    host: str = "127.0.0.1"
-    port: int = 7497  # default TWS paper trading port
-    client_id: int = 1
-    account: Optional[str] = None  # if None, let IBKR pick default
+    host: str = config.IBKR_HOST
+    port: int = config.IBKR_PORT
+    client_id: int = config.IBKR_CLIENT_ID
+    account: Optional[str] = config.IBKR_ACCOUNT
     exchange: str = "SMART"
-    currency: str = "EUR"  # VWCE is EUR-denominated
+    currency: str = config.IBKR_CURRENCY
 
 
 class IBKRClient:
