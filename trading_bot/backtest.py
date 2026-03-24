@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 from trading_bot.signals import Signal, rule_phase1_signal_for_row
 
@@ -73,6 +76,12 @@ def run_backtest_fixed_size(
 
     trades_df = pd.DataFrame(trades)
 
+    logger.debug(
+        "Backtest complete: %d trades, total_return=%.2f%%, max_drawdown=%.2f%%",
+        len(trades),
+        float(total_return) * 100,
+        max_drawdown * 100,
+    )
     return BacktestResult(
         equity_curve=equity_series,
         trades=trades_df,

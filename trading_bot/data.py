@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Optional
 
 import pandas as pd
 import yfinance as yf
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -40,11 +43,14 @@ def fetch_ohlcv(
     if start is None or end is None:
         start, end = _default_start_end(lookback_days)
 
+    logger.debug("Fetching %s from %s to %s (interval=%s)", symbol, start, end, interval)
     ticker = yf.Ticker(symbol)
     hist = ticker.history(start=start, end=end, interval=interval, auto_adjust=False)
 
     if hist.empty:
         raise ValueError(f"No historical data returned for symbol {symbol!r}")
+
+    logger.debug("Received %d rows for %s", len(hist), symbol)
 
     # Normalise column names to a consistent schema
     hist = hist.rename(

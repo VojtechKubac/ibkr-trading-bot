@@ -4,6 +4,7 @@ import argparse
 from datetime import date
 
 from trading_bot.data import fetch_ohlcv
+from trading_bot.logging_config import setup_logging
 from trading_bot.signals import IndicatorConfig, enrich_with_indicators, latest_signal
 from trading_bot.broker_ibkr import IBKRConfig, execute_signal_as_market_order
 from trading_bot.assets import get_asset
@@ -91,6 +92,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     """Run a signal check or backtest, and optionally execute via IBKR."""
+    setup_logging()
     args = parse_args()
 
     if args.asset:

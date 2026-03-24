@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Literal, Optional
 
 from ib_insync import IB, Contract, MarketOrder, Stock
+
+logger = logging.getLogger(__name__)
 
 Signal = Literal["BUY", "SELL", "HOLD"]
 
@@ -38,7 +41,9 @@ class IBKRClient:
         self.disconnect()
 
     def connect(self) -> None:
+        """Connect to TWS / IB Gateway."""
         if not self.ib.isConnected():
+            logger.info("Connecting to IBKR at %s:%d (client_id=%d)", self.cfg.host, self.cfg.port, self.cfg.client_id)
             self.ib.connect(
                 self.cfg.host,
                 self.cfg.port,
@@ -46,7 +51,9 @@ class IBKRClient:
             )
 
     def disconnect(self) -> None:
+        """Disconnect from TWS / IB Gateway."""
         if self.ib.isConnected():
+            logger.info("Disconnecting from IBKR")
             self.ib.disconnect()
 
     def _build_stock_contract(self, symbol: str) -> Contract:
@@ -63,9 +70,11 @@ class IBKRClient:
 
         contract = self._build_stock_contract(symbol)
         order = MarketOrder(action, quantity)
+        logger.info("Placing %s market order: %d x %s", action, quantity, symbol)
         trade = self.ib.placeOrder(contract, order)
         # Give IBKR a small moment to process the order so status is populated.
         self.ib.sleep(0.5)
+        logger.info("Order placed: id=%s status=%s", trade.order.orderId, trade.orderStatus.status)
         return trade
 
 
