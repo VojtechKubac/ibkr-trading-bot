@@ -8,7 +8,7 @@ This is a weekly trend/momentum trading bot that generates BUY/HOLD/SELL signals
 
 ## Repository Structure
 
-```
+```text
 trading_bot/          Core package
   __init__.py         Package marker
   data.py             OHLCV price data fetching via yfinance
@@ -60,6 +60,7 @@ DRYRUN=true python runweekly.py                      # coming soon
 ## Workflow
 
 - One Linear ticket = one PR.
+- **Always branch from `main`**, never from another feature branch.
 - Branch naming: `kua-{number}-short-description` (e.g. `kua-19-agent-docs`).
 - All CodeRabbit review comments must be resolved before requesting human review.
 - Do not merge your own PRs.
