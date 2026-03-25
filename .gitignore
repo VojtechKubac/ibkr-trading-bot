@@ -22,6 +22,8 @@ build/
 # IDE
 .vscode/
 .idea/
+.claude/
+.cursor/mcp.json
 
 # OS
 .DS_Store
