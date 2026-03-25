@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pytest
 import pandas as pd
 
 from trading_bot.backtest import run_backtest_fixed_size
@@ -59,7 +60,7 @@ class TestRunBacktestFixedSize:
         df = _df([_hold_row(100.0), _hold_row(100.0), _hold_row(100.0)])
         result = run_backtest_fixed_size(df, initial_cash=10_000.0, position_size=1)
         assert result.trades.empty
-        assert result.total_return == 0.0
+        assert result.total_return == pytest.approx(0.0)
 
     def test_sell_when_flat_produces_no_trade(self):
         """SELL signal when position is already 0 is silently ignored."""
