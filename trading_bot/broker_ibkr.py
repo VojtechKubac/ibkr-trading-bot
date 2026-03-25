@@ -5,17 +5,22 @@ from typing import Literal, Optional
 
 from ib_insync import IB, Contract, MarketOrder, Stock
 
+from trading_bot import config
+
 Signal = Literal["BUY", "SELL", "HOLD"]
 
 
 @dataclass
 class IBKRConfig:
-    host: str = "127.0.0.1"
-    port: int = 7497  # default TWS paper trading port
-    client_id: int = 1
-    account: Optional[str] = None  # if None, let IBKR pick default
+    """Connection parameters for TWS / IB Gateway."""
+
+    host: str = config.IBKR_HOST
+    port: int = config.IBKR_PORT
+    client_id: int = config.IBKR_CLIENT_ID
+    account: Optional[str] = config.IBKR_ACCOUNT
     exchange: str = "SMART"
-    currency: str = "EUR"  # VWCE is EUR-denominated
+    currency: str = config.IBKR_CURRENCY
+    timeout: int = config.IBKR_TIMEOUT
 
 
 class IBKRClient:
@@ -38,18 +43,28 @@ class IBKRClient:
         self.disconnect()
 
     def connect(self) -> None:
+        """Connect to TWS / IB Gateway, raising ConnectionError on timeout."""
         if not self.ib.isConnected():
-            self.ib.connect(
-                self.cfg.host,
-                self.cfg.port,
-                clientId=self.cfg.client_id,
-            )
+            try:
+                self.ib.connect(
+                    self.cfg.host,
+                    self.cfg.port,
+                    clientId=self.cfg.client_id,
+                    timeout=self.cfg.timeout,
+                )
+            except TimeoutError as exc:
+                raise ConnectionError(
+                    f"Timed out connecting to IBKR at {self.cfg.host}:{self.cfg.port}"
+                    f" (client_id={self.cfg.client_id})"
+                ) from exc
 
     def disconnect(self) -> None:
+        """Disconnect from TWS / IB Gateway."""
         if self.ib.isConnected():
             self.ib.disconnect()
 
     def _build_stock_contract(self, symbol: str) -> Contract:
+        """Build an ib_insync Stock contract for the given symbol."""
         return Stock(symbol, self.cfg.exchange, self.cfg.currency)
 
     def place_market_order(
@@ -58,6 +73,7 @@ class IBKRClient:
         quantity: int,
         action: Literal["BUY", "SELL"],
     ):
+        """Place a market order and return the ib_insync Trade object."""
         if quantity <= 0:
             raise ValueError("Quantity must be positive for a market order.")
 
