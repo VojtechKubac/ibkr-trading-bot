@@ -6,7 +6,7 @@ from datetime import date
 from trading_bot.data import fetch_ohlcv
 from trading_bot.logging_config import setup_logging
 from trading_bot.signals import IndicatorConfig, enrich_with_indicators, latest_signal
-from trading_bot.broker_ibkr import IBKRConfig, execute_signal_as_market_order
+from trading_bot.broker_ibkr import DryRunSkipped, IBKRConfig, execute_signal_as_market_order
 from trading_bot.assets import get_asset
 from trading_bot.backtest import run_backtest_fixed_size
 
@@ -169,6 +169,8 @@ def main() -> None:
         else:
             if trade is None:
                 print("Signal was HOLD — no IBKR order sent.")
+            elif isinstance(trade, DryRunSkipped):
+                print(f"DRYRUN mode — {trade.signal} order for {trade.quantity} x {trade.ib_symbol} skipped.")
             else:
                 print(f"IBKR order sent. Order ID: {trade.orderId}, status: {trade.orderStatus.status}")
 

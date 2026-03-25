@@ -13,6 +13,15 @@ Signal = Literal["BUY", "SELL", "HOLD"]
 
 
 @dataclass
+class DryRunSkipped:
+    """Returned by execute_signal_as_market_order when DRYRUN mode prevents execution."""
+
+    signal: Signal
+    ib_symbol: str
+    quantity: int
+
+
+@dataclass
 class IBKRConfig:
     """Connection parameters for TWS / IB Gateway."""
 
@@ -97,8 +106,8 @@ def execute_signal_as_market_order(
     - SELL -> SELL `quantity` shares
     - HOLD -> no order
 
-    Returns ``None`` without placing any order when ``DRYRUN`` is not
-    explicitly set to ``"false"`` in the environment.
+    Returns ``None`` for HOLD, a :class:`DryRunSkipped` sentinel when
+    ``DRYRUN`` is not explicitly ``"false"``, or an ib_insync Trade object.
     """
     if cfg is None:
         cfg = IBKRConfig()
@@ -116,7 +125,7 @@ def execute_signal_as_market_order(
 
     if os.environ.get("DRYRUN", "true").lower() != "false":
         logger.info("DRYRUN mode: skipping %s order for %d x %s", action, quantity, ib_symbol)
-        return None
+        return DryRunSkipped(signal=signal, ib_symbol=ib_symbol, quantity=quantity)
 
     with IBKRClient(cfg) as client:
         trade = client.place_market_order(
