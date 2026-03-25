@@ -7,6 +7,8 @@ from typing import Literal, Optional
 
 from ib_insync import IB, Contract, MarketOrder, Stock
 
+from trading_bot import config
+
 logger = logging.getLogger(__name__)
 
 Signal = Literal["BUY", "SELL", "HOLD"]
@@ -25,12 +27,13 @@ class DryRunSkipped:
 class IBKRConfig:
     """Connection parameters for TWS / IB Gateway."""
 
-    host: str = "127.0.0.1"
-    port: int = 7497  # default TWS paper trading port
-    client_id: int = 1
-    account: Optional[str] = None  # if None, let IBKR pick default
+    host: str = config.IBKR_HOST
+    port: int = config.IBKR_PORT
+    client_id: int = config.IBKR_CLIENT_ID
+    account: Optional[str] = config.IBKR_ACCOUNT
     exchange: str = "SMART"
-    currency: str = "EUR"  # VWCE is EUR-denominated
+    currency: str = config.IBKR_CURRENCY
+    timeout: int = config.IBKR_TIMEOUT
 
 
 class IBKRClient:
@@ -53,14 +56,21 @@ class IBKRClient:
         self.disconnect()
 
     def connect(self) -> None:
-        """Connect to TWS / IB Gateway."""
+        """Connect to TWS / IB Gateway, raising ConnectionError on timeout."""
         if not self.ib.isConnected():
             logger.info("Connecting to IBKR at %s:%d (client_id=%d)", self.cfg.host, self.cfg.port, self.cfg.client_id)
-            self.ib.connect(
-                self.cfg.host,
-                self.cfg.port,
-                clientId=self.cfg.client_id,
-            )
+            try:
+                self.ib.connect(
+                    self.cfg.host,
+                    self.cfg.port,
+                    clientId=self.cfg.client_id,
+                    timeout=self.cfg.timeout,
+                )
+            except TimeoutError as exc:
+                raise ConnectionError(
+                    f"Timed out connecting to IBKR at {self.cfg.host}:{self.cfg.port}"
+                    f" (client_id={self.cfg.client_id})"
+                ) from exc
 
     def disconnect(self) -> None:
         """Disconnect from TWS / IB Gateway."""
@@ -134,4 +144,3 @@ def execute_signal_as_market_order(
             action=action,
         )
     return trade
-
