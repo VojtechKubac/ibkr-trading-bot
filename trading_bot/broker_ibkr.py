@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass
 from typing import Literal, Optional
 
@@ -95,6 +96,9 @@ def execute_signal_as_market_order(
     - BUY  -> BUY `quantity` shares
     - SELL -> SELL `quantity` shares
     - HOLD -> no order
+
+    Returns ``None`` without placing any order when ``DRYRUN`` is not
+    explicitly set to ``"false"`` in the environment.
     """
     if cfg is None:
         cfg = IBKRConfig()
@@ -109,6 +113,10 @@ def execute_signal_as_market_order(
         action = "SELL"
     else:
         raise ValueError(f"Unsupported signal {signal!r}")
+
+    if os.environ.get("DRYRUN", "true").lower() != "false":
+        logger.info("DRYRUN mode: skipping %s order for %d x %s", action, quantity, ib_symbol)
+        return None
 
     with IBKRClient(cfg) as client:
         trade = client.place_market_order(
