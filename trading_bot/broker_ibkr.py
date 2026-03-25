@@ -24,6 +24,15 @@ class DryRunSkipped:
 
 
 @dataclass
+class OrderSkipped:
+    """Returned when a BUY/SELL is skipped because the account position makes it redundant."""
+
+    signal: Signal
+    ib_symbol: str
+    reason: Literal["already_long", "already_flat"]
+
+
+@dataclass
 class IBKRConfig:
     """Connection parameters for TWS / IB Gateway."""
 
@@ -45,14 +54,17 @@ class IBKRClient:
     """
 
     def __init__(self, cfg: IBKRConfig) -> None:
+        """Initialise the client with connection parameters; does not connect yet."""
         self.cfg = cfg
         self.ib = IB()
 
     def __enter__(self) -> "IBKRClient":
+        """Connect on entry; use as ``with IBKRClient(cfg) as client:``."""
         self.connect()
         return self
 
     def __exit__(self, exc_type, exc, tb) -> None:
+        """Disconnect on exit regardless of whether an exception was raised."""
         self.disconnect()
 
     def connect(self) -> None:
@@ -77,6 +89,21 @@ class IBKRClient:
         if self.ib.isConnected():
             logger.info("Disconnecting from IBKR")
             self.ib.disconnect()
+
+    def get_current_position(self, symbol: str) -> int:
+        """Return the current net share count for *symbol* (0 if no position or on error).
+
+        Any exception raised by ``ib.positions()`` (e.g. connection loss) is
+        caught, logged, and treated as 0 so callers receive a safe fallback
+        rather than a raw network exception.
+        """
+        try:
+            for pos in self.ib.positions():
+                if pos.contract.symbol == symbol:
+                    return int(pos.position)
+        except Exception:
+            logger.error("Failed to fetch positions for %s; assuming 0", symbol, exc_info=True)
+        return 0
 
     def _build_stock_contract(self, symbol: str) -> Contract:
         """Build an ib_insync Stock contract for the given symbol."""
@@ -112,12 +139,15 @@ def execute_signal_as_market_order(
     """
     Convenience helper: map a BUY/SELL/HOLD signal into a single market order.
 
-    - BUY  -> BUY `quantity` shares
-    - SELL -> SELL `quantity` shares
+    - BUY  -> BUY `quantity` shares (skipped if already long)
+    - SELL -> SELL `quantity` shares (skipped if already flat)
     - HOLD -> no order
 
-    Returns ``None`` for HOLD, a :class:`DryRunSkipped` sentinel when
-    ``DRYRUN`` is not explicitly ``"false"``, or an ib_insync Trade object.
+    Returns:
+      - ``None`` for HOLD
+      - :class:`DryRunSkipped` when ``DRYRUN`` is not explicitly ``"false"``
+      - :class:`OrderSkipped` when the current account position makes the order redundant
+      - an ib_insync Trade object on successful placement
     """
     if cfg is None:
         cfg = IBKRConfig()
@@ -138,6 +168,15 @@ def execute_signal_as_market_order(
         return DryRunSkipped(signal=signal, ib_symbol=ib_symbol, quantity=quantity)
 
     with IBKRClient(cfg) as client:
+        current_pos = client.get_current_position(ib_symbol)
+        if action == "BUY" and current_pos > 0:
+            logger.warning(
+                "Skipping BUY: already holding %d shares of %s", current_pos, ib_symbol
+            )
+            return OrderSkipped(signal=signal, ib_symbol=ib_symbol, reason="already_long")
+        if action == "SELL" and current_pos == 0:
+            logger.warning("Skipping SELL: no position in %s", ib_symbol)
+            return OrderSkipped(signal=signal, ib_symbol=ib_symbol, reason="already_flat")
         trade = client.place_market_order(
             symbol=ib_symbol,
             quantity=quantity,

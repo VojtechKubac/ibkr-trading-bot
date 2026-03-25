@@ -16,11 +16,13 @@ trading_bot/          Core package
   broker_ibkr.py      Thin IBKR order execution wrapper via ib_insync
   assets.py           Shared asset universe mapping Yahoo Finance to IBKR symbols
   backtest.py         Fixed-size single-asset backtester using Phase 1 rules
+  config.py           Central config loaded from environment / .env
+  logging_config.py   Structured logging setup
 main.py               CLI entry point: signal check, backtest, optional IBKR execution
 requirements.txt      Runtime dependencies
 requirements-dev.txt  Dev-only tools: pytest, ruff, mypy
 trading-bot-plan.md   High-level project and strategy plan
-tests/                Unit tests (coming soon)
+tests/                Unit tests
 scheduler/            Scheduling infrastructure (coming soon)
 runweekly.py          Weekly cron entry point (coming soon)
 ```
@@ -53,9 +55,11 @@ DRYRUN=true python runweekly.py                      # coming soon
 ## Conventions
 
 - **Python 3.12**; no ORM, no complex frameworks.
-- **Config via `.env`** (see `.env.example` — coming soon); never hardcode credentials or account IDs.
+- **Config via `.env`** (see `.env.example`); never hardcode credentials or account IDs.
 - **Logging**: each module uses `logging.getLogger(__name__)` — no `print()` in library code. `main.py` may print to stdout for human-readable CLI output.
-- **Tests**: use `pytest`; no real network calls in unit tests — mock `yf.Ticker.history` for data tests.
+- **Tests**: use `pytest`; no real network calls in unit tests — mock `yf.Ticker.history` for data tests and `IBKRClient` / `IB` for broker tests.
+- **Docstrings**: all public methods and classes must have a docstring. Dunder methods (`__init__`, `__enter__`, `__exit__`) should have a one-line docstring when their behaviour is non-obvious.
+- **IBKR network calls**: wrap `ib_insync` calls that can fail mid-connection (e.g. `ib.positions()`, `ib.placeOrder()`) in `try/except`; log the error with `exc_info=True` and return a safe fallback rather than letting a raw network exception propagate to the caller.
 - **PR size target**: ~200 lines, hard limit 500 lines (tests included).
 
 ## Workflow
