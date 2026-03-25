@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Optional
@@ -7,9 +8,13 @@ from typing import Optional
 import pandas as pd
 import yfinance as yf
 
+logger = logging.getLogger(__name__)
+
 
 @dataclass
 class PriceDataConfig:
+    """Default parameters for price data fetching."""
+
     symbol: str = "VWCE.DE"  # default to VWCE on XETRA
     # Default to ~5 years: typically enough for basic backtests across a few regimes
     # while keeping downloads fast. Some tickers (e.g. newer ETFs) simply won't have
@@ -19,6 +24,7 @@ class PriceDataConfig:
 
 
 def _default_start_end(lookback_days: int) -> tuple[date, date]:
+    """Return (start, end) dates for the given number of lookback calendar days."""
     end = date.today()
     start = end - timedelta(days=lookback_days)
     return start, end
@@ -40,11 +46,14 @@ def fetch_ohlcv(
     if start is None or end is None:
         start, end = _default_start_end(lookback_days)
 
+    logger.debug("Fetching %s from %s to %s (interval=%s)", symbol, start, end, interval)
     ticker = yf.Ticker(symbol)
     hist = ticker.history(start=start, end=end, interval=interval, auto_adjust=False)
 
     if hist.empty:
         raise ValueError(f"No historical data returned for symbol {symbol!r}")
+
+    logger.debug("Received %d rows for %s", len(hist), symbol)
 
     # Normalise column names to a consistent schema
     hist = hist.rename(

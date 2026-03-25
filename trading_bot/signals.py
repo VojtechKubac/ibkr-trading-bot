@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Literal
 
 import numpy as np
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 
 Signal = Literal["BUY", "SELL", "HOLD"]
@@ -12,6 +15,8 @@ Signal = Literal["BUY", "SELL", "HOLD"]
 
 @dataclass
 class IndicatorConfig:
+    """Configuration for technical indicator parameters."""
+
     short_ma_window: int = 50
     long_ma_window: int = 200
     rsi_window: int = 14
@@ -97,5 +102,6 @@ def latest_signal(df_with_indicators: pd.DataFrame) -> tuple[pd.Timestamp, Signa
     last_row = df_with_indicators.iloc[-1]
     ts = df_with_indicators.index[-1]
     sig = rule_phase1_signal_for_row(last_row)
+    logger.debug("Latest signal: %s at %s", sig, ts)
     return ts, sig, last_row
 
