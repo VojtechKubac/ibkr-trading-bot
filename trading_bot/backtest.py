@@ -5,13 +5,15 @@ from dataclasses import dataclass
 
 import pandas as pd
 
-logger = logging.getLogger(__name__)
-
 from trading_bot.signals import Signal, rule_phase1_signal_for_row
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
 class BacktestResult:
+    """Container for the results of a fixed-size backtest run."""
+
     equity_curve: pd.Series
     trades: pd.DataFrame
     total_return: float

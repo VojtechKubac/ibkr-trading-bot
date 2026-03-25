@@ -15,6 +15,8 @@ Signal = Literal["BUY", "SELL", "HOLD"]
 
 @dataclass
 class IndicatorConfig:
+    """Configuration for technical indicator parameters."""
+
     short_ma_window: int = 50
     long_ma_window: int = 200
     rsi_window: int = 14

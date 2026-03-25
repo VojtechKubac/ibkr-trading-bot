@@ -13,6 +13,8 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class PriceDataConfig:
+    """Default parameters for price data fetching."""
+
     symbol: str = "VWCE.DE"  # default to VWCE on XETRA
     # Default to ~5 years: typically enough for basic backtests across a few regimes
     # while keeping downloads fast. Some tickers (e.g. newer ETFs) simply won't have
@@ -22,6 +24,7 @@ class PriceDataConfig:
 
 
 def _default_start_end(lookback_days: int) -> tuple[date, date]:
+    """Return (start, end) dates for the given number of lookback calendar days."""
     end = date.today()
     start = end - timedelta(days=lookback_days)
     return start, end

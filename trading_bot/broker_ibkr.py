@@ -13,6 +13,8 @@ Signal = Literal["BUY", "SELL", "HOLD"]
 
 @dataclass
 class IBKRConfig:
+    """Connection parameters for TWS / IB Gateway."""
+
     host: str = "127.0.0.1"
     port: int = 7497  # default TWS paper trading port
     client_id: int = 1
@@ -57,6 +59,7 @@ class IBKRClient:
             self.ib.disconnect()
 
     def _build_stock_contract(self, symbol: str) -> Contract:
+        """Build an ib_insync Stock contract for the given symbol."""
         return Stock(symbol, self.cfg.exchange, self.cfg.currency)
 
     def place_market_order(
@@ -65,6 +68,7 @@ class IBKRClient:
         quantity: int,
         action: Literal["BUY", "SELL"],
     ):
+        """Place a market order and return the ib_insync Trade object."""
         if quantity <= 0:
             raise ValueError("Quantity must be positive for a market order.")
 
