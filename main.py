@@ -13,6 +13,7 @@ from trading_bot import config
 
 
 def parse_args() -> argparse.Namespace:
+    """Parse and return CLI arguments for the signal-check / backtest entry point."""
     parser = argparse.ArgumentParser(
         description="Run a single Phase 1 weekly trend/momentum signal check.",
     )
@@ -91,6 +92,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    """Run a signal check or backtest, and optionally execute via IBKR."""
     args = parse_args()
 
     if args.asset:

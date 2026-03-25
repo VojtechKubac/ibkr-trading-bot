@@ -18,6 +18,7 @@ trading_bot/          Core package
   backtest.py         Fixed-size single-asset backtester using Phase 1 rules
 main.py               CLI entry point: signal check, backtest, optional IBKR execution
 requirements.txt      Runtime dependencies
+requirements-dev.txt  Dev-only tools: pytest, ruff, mypy
 trading-bot-plan.md   High-level project and strategy plan
 tests/                Unit tests (coming soon)
 scheduler/            Scheduling infrastructure (coming soon)
@@ -27,17 +28,17 @@ runweekly.py          Weekly cron entry point (coming soon)
 ## Development Commands
 
 ```bash
-# Install dependencies
-pip install -r requirements.txt
+# Install runtime + dev dependencies
+pip install -r requirements.txt -r requirements-dev.txt
 
 # Run tests
-pytest tests/                                        # coming soon
+pytest tests/
 
 # Run linter
-ruff check .                                         # coming soon (add ruff to dev deps)
+ruff check .
 
 # Run type checker
-mypy trading_bot/ main.py                            # coming soon (add mypy to dev deps)
+mypy trading_bot/ main.py
 
 # Run signal check (dry — no orders placed)
 python main.py --asset vwce
