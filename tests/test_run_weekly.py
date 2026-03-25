@@ -47,6 +47,8 @@ def conn(tmp_path) -> sqlite3.Connection:
 # ---------------------------------------------------------------------------
 
 class TestDbHelpers:
+    """Tests for the SQLite position-tracking helper functions."""
+
     def test_init_creates_positions_table(self, conn):
         tables = conn.execute(
             "SELECT name FROM sqlite_master WHERE type='table'"
@@ -81,6 +83,8 @@ class TestDbHelpers:
 # ---------------------------------------------------------------------------
 
 class TestIsStopLossTriggered:
+    """Tests for the is_stop_loss_triggered boundary logic."""
+
     def test_not_triggered_when_price_unchanged(self):
         assert not is_stop_loss_triggered(100.0, 100.0, 0.15)
 
@@ -102,6 +106,8 @@ class TestIsStopLossTriggered:
 # ---------------------------------------------------------------------------
 
 class TestRunSymbolDryRun:
+    """Smoke tests for run_symbol in DRYRUN mode — no IBKR connection made."""
+
     def _patch_data(self, df: pd.DataFrame):
         """Return a context-manager that patches fetch_ohlcv and enrich_with_indicators."""
         return patch.multiple(
@@ -129,10 +135,13 @@ class TestRunSymbolDryRun:
         with patch("run_weekly.fetch_ohlcv", side_effect=RuntimeError("network down")):
             run_symbol("vwce", conn)  # must not raise
 
-    def test_stop_loss_overrides_signal_in_dryrun(self, monkeypatch, conn):
-        """Stop-loss condition should set signal to SELL even in DRYRUN mode (just logged)."""
+    def test_stop_loss_overrides_signal_in_dryrun(self, monkeypatch, conn, caplog):
+        """Stop-loss condition forces signal to SELL even in DRYRUN mode."""
+        import logging
         monkeypatch.setenv("DRYRUN", "true")
         save_position(conn, "VWCE", 200.0, 1)  # entry at 200, current at 100 → -50%
         df = _minimal_df(close=100.0)
-        with self._patch_data(df):
-            run_symbol("vwce", conn)  # must not raise; stop-loss SELL is logged
+        with caplog.at_level(logging.INFO):
+            with self._patch_data(df):
+                run_symbol("vwce", conn)
+        assert "signal=SELL" in caplog.text

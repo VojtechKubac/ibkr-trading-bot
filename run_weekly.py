@@ -5,8 +5,8 @@ optionally executes orders via IBKR when ``DRYRUN=false``.
 
 Usage::
 
-    DRYRUN=true python run_weekly.py          # dry run, no orders
-    DRYRUN=false python run_weekly.py         # live/paper execution
+    DRYRUN=true python run_weekly.py                        # dry run, no orders
+    DRYRUN=false IBKR_ENABLE=true python run_weekly.py     # live/paper execution
 """
 from __future__ import annotations
 
@@ -41,6 +41,8 @@ STOP_LOSS_PCT: float = float(os.getenv("STOP_LOSS_PCT", "0.15"))
 POSITION_ALLOCATION_PCT: float = float(os.getenv("POSITION_ALLOCATION_PCT", "0.25"))
 # Total portfolio value used to size orders when IBKR account query is unavailable.
 PORTFOLIO_VALUE: float = float(os.getenv("PORTFOLIO_VALUE", "10000"))
+# Explicit second guard: must be true in addition to DRYRUN=false before orders are placed.
+IBKR_ENABLE: bool = os.getenv("IBKR_ENABLE", "false").lower() == "true"
 
 
 # ---------------------------------------------------------------------------
@@ -141,7 +143,21 @@ def run_symbol(symbol_key: str, conn: sqlite3.Connection) -> None:
         logger.info("%s: DRYRUN — would execute: %s", symbol_key, signal)
         return
 
-    quantity = max(1, int(PORTFOLIO_VALUE * POSITION_ALLOCATION_PCT / current_price))
+    if not IBKR_ENABLE:
+        logger.error(
+            "%s: refusing execution — IBKR_ENABLE is not true (DRYRUN=false alone is insufficient)",
+            symbol_key,
+        )
+        return
+
+    # Compute quantity: for SELL use the tracked position size; for BUY use allocation sizing.
+    if signal == "SELL":
+        if not position:
+            logger.info("%s: SELL skipped — no tracked position to sell", symbol_key)
+            return
+        quantity = int(position["quantity"])
+    else:
+        quantity = max(1, int(PORTFOLIO_VALUE * POSITION_ALLOCATION_PCT / current_price))
 
     try:
         result = execute_signal_as_market_order(
@@ -168,7 +184,8 @@ def run_symbol(symbol_key: str, conn: sqlite3.Connection) -> None:
             result.orderStatus.status,
         )
         if signal == "BUY":
-            save_position(conn, asset.ib_symbol, current_price, quantity)
+            fill_price = float(getattr(result.orderStatus, "avgFillPrice", 0) or current_price)
+            save_position(conn, asset.ib_symbol, fill_price, quantity)
         elif signal == "SELL":
             delete_position(conn, asset.ib_symbol)
 
@@ -183,12 +200,14 @@ def main() -> None:
     logger.info("Weekly run starting — symbols=%s dryrun=%s", WEEKLY_SYMBOLS, os.getenv("DRYRUN", "true"))
 
     conn = init_db(config.DB_PATH)
-
-    for symbol_key in WEEKLY_SYMBOLS:
-        try:
-            run_symbol(symbol_key, conn)
-        except Exception:
-            logger.error("Unhandled error processing %s", symbol_key, exc_info=True)
+    try:
+        for symbol_key in WEEKLY_SYMBOLS:
+            try:
+                run_symbol(symbol_key, conn)
+            except Exception:
+                logger.error("Unhandled error processing %s", symbol_key, exc_info=True)
+    finally:
+        conn.close()
 
     logger.info("Weekly run complete")
 
