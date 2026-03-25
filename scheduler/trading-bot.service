@@ -1,0 +1,17 @@
+[Unit]
+Description=IBKR Trading Bot — weekly signal check and optional order execution
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart={PROJECTDIR}/.venv/bin/python {PROJECTDIR}/run_weekly.py
+EnvironmentFile={PROJECTDIR}/.env
+WorkingDirectory={PROJECTDIR}
+StandardOutput=journal
+StandardError=journal
+Restart=on-failure
+RestartSec=60s
+
+[Install]
+WantedBy=default.target
