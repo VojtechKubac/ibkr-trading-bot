@@ -124,10 +124,11 @@ def main() -> None:
             initial_cash=args.backtest_initial_cash,
             position_size=args.backtest_position_size,
         )
-        print(f"Initial equity: {args.backtest_initial_cash:.2f}")
-        print(f"Final equity:   {result.equity_curve.iloc[-1]:.2f}")
-        print(f"Total return:   {result.total_return * 100:.2f}%")
-        print(f"Max drawdown:   {result.max_drawdown * 100:.2f}%")
+        print(f"Initial equity:   {args.backtest_initial_cash:.2f}")
+        print(f"Final equity:     {result.equity_curve.iloc[-1]:.2f}")
+        print(f"Total return:     {result.total_return * 100:.2f}%")
+        print(f"Benchmark return: {result.benchmark_return * 100:.2f}%  (buy-and-hold)")
+        print(f"Max drawdown:     {result.max_drawdown * 100:.2f}%")
         print()
         print(f"Number of trades: {len(result.trades)}")
         if not result.trades.empty:

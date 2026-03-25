@@ -18,6 +18,7 @@ class BacktestResult:
     trades: pd.DataFrame
     total_return: float
     max_drawdown: float
+    benchmark_return: float
 
 
 def run_backtest_fixed_size(
@@ -31,16 +32,23 @@ def run_backtest_fixed_size(
 
     - Uses Phase 1 signal on each bar.
     - Enters/exits with fixed share size on BUY/SELL.
+    - Execution price uses ``adj_close`` when present, else ``close``.
     - No fees, slippage, or partial fills.
     - At most one position (long or flat).
     """
+    price_col = "adj_close" if "adj_close" in df_with_indicators.columns else "close"
+    benchmark_return = (
+        float(df_with_indicators[price_col].iloc[-1])
+        / float(df_with_indicators[price_col].iloc[0])
+    ) - 1.0
+
     cash = initial_cash
     position = 0  # number of shares
     equity = []
     trades = []
 
     for ts, row in df_with_indicators.iterrows():
-        price = float(row["close"])
+        price = float(row[price_col])
         signal: Signal = rule_phase1_signal_for_row(row)
 
         # Execute trading rule
@@ -79,15 +87,17 @@ def run_backtest_fixed_size(
     trades_df = pd.DataFrame(trades)
 
     logger.debug(
-        "Backtest complete: %d trades, total_return=%.2f%%, max_drawdown=%.2f%%",
+        "Backtest complete: %d trades, total_return=%.2f%%, max_drawdown=%.2f%%, benchmark=%.2f%%",
         len(trades),
         float(total_return) * 100,
         max_drawdown * 100,
+        benchmark_return * 100,
     )
     return BacktestResult(
         equity_curve=equity_series,
         trades=trades_df,
         total_return=float(total_return),
         max_drawdown=max_drawdown,
+        benchmark_return=benchmark_return,
     )
 
