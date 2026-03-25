@@ -13,5 +13,3 @@ StandardError=journal
 Restart=on-failure
 RestartSec=60s
 
-[Install]
-WantedBy=default.target
