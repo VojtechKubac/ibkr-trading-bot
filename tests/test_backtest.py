@@ -108,6 +108,5 @@ class TestRunBacktestFixedSize:
 
     def test_raises_on_empty_dataframe(self):
         """Empty input raises ValueError rather than an opaque IndexError."""
-        import pandas as pd
         with pytest.raises(ValueError, match="at least one row"):
             run_backtest_fixed_size(pd.DataFrame(), initial_cash=10_000.0)
