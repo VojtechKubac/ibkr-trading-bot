@@ -12,12 +12,27 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+
+def _parse_int_env(name: str, default: int) -> int:
+    """Read an integer from the environment, raising a clear error on bad values."""
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        raise ValueError(
+            f"Environment variable {name}={raw!r} is not a valid integer"
+        ) from None
+
+
 # ---------------------------------------------------------------------------
 # IBKR connection defaults
 # ---------------------------------------------------------------------------
 IBKR_HOST: str = os.getenv("IBKR_HOST", "127.0.0.1")
-IBKR_PORT: int = int(os.getenv("IBKR_PORT", "7497"))
-IBKR_CLIENT_ID: int = int(os.getenv("IBKR_CLIENT_ID", "1"))
+IBKR_PORT: int = _parse_int_env("IBKR_PORT", 7497)
+IBKR_CLIENT_ID: int = _parse_int_env("IBKR_CLIENT_ID", 1)
+IBKR_TIMEOUT: int = _parse_int_env("IBKR_TIMEOUT", 4)
 IBKR_ACCOUNT: str | None = os.getenv("IBKR_ACCOUNT") or None
 IBKR_CURRENCY: str = os.getenv("IBKR_CURRENCY", "EUR")
 

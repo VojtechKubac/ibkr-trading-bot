@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import math
 from datetime import date
 
 from trading_bot.data import fetch_ohlcv
@@ -140,7 +141,7 @@ def main() -> None:
     print(f"Latest bar: {ts}")
     print(f"Close price: {price:.2f}")
     print(f"50d MA: {ma_short:.2f} | 200d MA: {ma_long:.2f}")
-    if not (rsi != rsi):  # simple NaN check
+    if not math.isnan(rsi):
         print(f"RSI(14): {rsi:.2f}")
     print()
     print(f"Phase 1 signal: {sig}")

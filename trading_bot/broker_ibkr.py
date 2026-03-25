@@ -20,6 +20,7 @@ class IBKRConfig:
     account: Optional[str] = config.IBKR_ACCOUNT
     exchange: str = "SMART"
     currency: str = config.IBKR_CURRENCY
+    timeout: int = config.IBKR_TIMEOUT
 
 
 class IBKRClient:
@@ -42,13 +43,20 @@ class IBKRClient:
         self.disconnect()
 
     def connect(self) -> None:
-        """Connect to TWS / IB Gateway."""
+        """Connect to TWS / IB Gateway, raising ConnectionError on timeout."""
         if not self.ib.isConnected():
-            self.ib.connect(
-                self.cfg.host,
-                self.cfg.port,
-                clientId=self.cfg.client_id,
-            )
+            try:
+                self.ib.connect(
+                    self.cfg.host,
+                    self.cfg.port,
+                    clientId=self.cfg.client_id,
+                    timeout=self.cfg.timeout,
+                )
+            except TimeoutError as exc:
+                raise ConnectionError(
+                    f"Timed out connecting to IBKR at {self.cfg.host}:{self.cfg.port}"
+                    f" (client_id={self.cfg.client_id})"
+                ) from exc
 
     def disconnect(self) -> None:
         """Disconnect from TWS / IB Gateway."""
