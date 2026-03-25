@@ -105,3 +105,9 @@ class TestRunBacktestFixedSize:
         result = run_backtest_fixed_size(df, initial_cash=10_000.0, position_size=1)
         # adj_close goes 50 -> 100, so benchmark = +100%
         assert result.benchmark_return == pytest.approx(1.0)
+
+    def test_raises_on_empty_dataframe(self):
+        """Empty input raises ValueError rather than an opaque IndexError."""
+        import pandas as pd
+        with pytest.raises(ValueError, match="at least one row"):
+            run_backtest_fixed_size(pd.DataFrame(), initial_cash=10_000.0)

@@ -35,7 +35,13 @@ def run_backtest_fixed_size(
     - Execution price uses ``adj_close`` when present, else ``close``.
     - No fees, slippage, or partial fills.
     - At most one position (long or flat).
+
+    Raises:
+        ValueError: If ``df_with_indicators`` is empty.
     """
+    if df_with_indicators.empty:
+        raise ValueError("df_with_indicators must contain at least one row")
+
     price_col = "adj_close" if "adj_close" in df_with_indicators.columns else "close"
     benchmark_return = (
         float(df_with_indicators[price_col].iloc[-1])
