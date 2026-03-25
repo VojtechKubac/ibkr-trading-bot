@@ -60,6 +60,13 @@ class TestGetCurrentPosition:
         assert client.get_current_position("VWCE") == 7
         assert client.get_current_position("SPY") == 2
 
+    def test_returns_zero_on_network_error(self):
+        """Any exception from ib.positions() is caught and 0 is returned."""
+        client = IBKRClient(_make_cfg())
+        client.ib = MagicMock()
+        client.ib.positions.side_effect = ConnectionError("lost connection")
+        assert client.get_current_position("VWCE") == 0
+
 
 # ---------------------------------------------------------------------------
 # execute_signal_as_market_order — position-aware skipping

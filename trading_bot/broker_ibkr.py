@@ -54,14 +54,17 @@ class IBKRClient:
     """
 
     def __init__(self, cfg: IBKRConfig) -> None:
+        """Initialise the client with connection parameters; does not connect yet."""
         self.cfg = cfg
         self.ib = IB()
 
     def __enter__(self) -> "IBKRClient":
+        """Connect on entry; use as ``with IBKRClient(cfg) as client:``."""
         self.connect()
         return self
 
     def __exit__(self, exc_type, exc, tb) -> None:
+        """Disconnect on exit regardless of whether an exception was raised."""
         self.disconnect()
 
     def connect(self) -> None:
@@ -88,10 +91,18 @@ class IBKRClient:
             self.ib.disconnect()
 
     def get_current_position(self, symbol: str) -> int:
-        """Return the current net share count for *symbol* (0 if no position)."""
-        for pos in self.ib.positions():
-            if pos.contract.symbol == symbol:
-                return int(pos.position)
+        """Return the current net share count for *symbol* (0 if no position or on error).
+
+        Any exception raised by ``ib.positions()`` (e.g. connection loss) is
+        caught, logged, and treated as 0 so callers receive a safe fallback
+        rather than a raw network exception.
+        """
+        try:
+            for pos in self.ib.positions():
+                if pos.contract.symbol == symbol:
+                    return int(pos.position)
+        except Exception:
+            logger.error("Failed to fetch positions for %s; assuming 0", symbol, exc_info=True)
         return 0
 
     def _build_stock_contract(self, symbol: str) -> Contract:
