@@ -27,6 +27,7 @@ from trading_bot.broker_ibkr import (
 )
 from trading_bot.data import fetch_ohlcv
 from trading_bot.logging_config import setup_logging
+from trading_bot.scoring import ScoringConfig, weighted_signal_for_row
 from trading_bot.signals import IndicatorConfig, enrich_with_indicators, latest_signal
 
 logger = logging.getLogger(__name__)
@@ -43,6 +44,13 @@ POSITION_ALLOCATION_PCT: float = float(os.getenv("POSITION_ALLOCATION_PCT", "0.2
 PORTFOLIO_VALUE: float = float(os.getenv("PORTFOLIO_VALUE", "10000"))
 # Explicit second guard: must be true in addition to DRYRUN=false before orders are placed.
 IBKR_ENABLE: bool = os.getenv("IBKR_ENABLE", "false").lower() == "true"
+# Signal strategy: "simple" uses Phase 1 MA rules; "weighted" uses the composite scoring engine.
+SIGNAL_STRATEGY: str = os.getenv("SIGNAL_STRATEGY", "simple").strip().lower()
+_VALID_SIGNAL_STRATEGIES = {"simple", "weighted"}
+if SIGNAL_STRATEGY not in _VALID_SIGNAL_STRATEGIES:
+    raise ValueError(
+        f"Invalid SIGNAL_STRATEGY={SIGNAL_STRATEGY!r}; expected one of {_VALID_SIGNAL_STRATEGIES}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -134,6 +142,9 @@ def run_symbol(symbol_key: str, conn: sqlite3.Connection) -> None:
             STOP_LOSS_PCT * 100,
         )
         signal = "SELL"
+    elif SIGNAL_STRATEGY == "weighted":
+        signal = weighted_signal_for_row(df.iloc[-1], ScoringConfig())
+        logger.debug("%s: weighted strategy selected signal=%s", symbol_key, signal)
     else:
         _, signal, _ = latest_signal(df)
 
