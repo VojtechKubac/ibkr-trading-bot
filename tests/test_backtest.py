@@ -12,28 +12,35 @@ def _df(rows: list[dict]) -> pd.DataFrame:
     return pd.DataFrame(rows, index=idx)
 
 
-def _buy_row(close: float, adj_close: float | None = None) -> dict:
-    """Row that triggers BUY: price > ma_long and price > ma_short."""
-    row = {"close": close, "ma_short": close * 0.9, "ma_long": close * 0.8, "rsi": 55.0}
+def _with_adj_close(row: dict, adj_close: float | None) -> dict:
+    """Optionally inject an adj_close column into a row dict."""
     if adj_close is not None:
         row["adj_close"] = adj_close
     return row
+
+
+def _buy_row(close: float, adj_close: float | None = None) -> dict:
+    """Row that triggers BUY: price > ma_long and price > ma_short."""
+    return _with_adj_close(
+        {"close": close, "ma_short": close * 0.9, "ma_long": close * 0.8, "rsi": 55.0},
+        adj_close,
+    )
 
 
 def _sell_row(close: float, adj_close: float | None = None) -> dict:
     """Row that triggers SELL: price < ma_long."""
-    row = {"close": close, "ma_short": close * 1.1, "ma_long": close * 1.2, "rsi": 45.0}
-    if adj_close is not None:
-        row["adj_close"] = adj_close
-    return row
+    return _with_adj_close(
+        {"close": close, "ma_short": close * 1.1, "ma_long": close * 1.2, "rsi": 45.0},
+        adj_close,
+    )
 
 
 def _hold_row(close: float, adj_close: float | None = None) -> dict:
     """Row that triggers HOLD: NaN MAs (window not filled)."""
-    row = {"close": close, "ma_short": float("nan"), "ma_long": float("nan"), "rsi": 50.0}
-    if adj_close is not None:
-        row["adj_close"] = adj_close
-    return row
+    return _with_adj_close(
+        {"close": close, "ma_short": float("nan"), "ma_long": float("nan"), "rsi": 50.0},
+        adj_close,
+    )
 
 
 class TestRunBacktestFixedSize:
