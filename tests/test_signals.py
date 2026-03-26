@@ -6,6 +6,8 @@ import pytest
 
 from trading_bot.signals import (
     IndicatorConfig,
+    compute_bollinger_bands,
+    compute_macd,
     compute_moving_averages,
     compute_rsi,
     enrich_with_indicators,
@@ -119,14 +121,107 @@ class TestComputeRsi:
 # enrich_with_indicators
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# compute_macd
+# ---------------------------------------------------------------------------
+
+class TestComputeMacd:
+    """Tests for the MACD indicator."""
+
+    def test_returns_three_columns(self):
+        """compute_macd returns a DataFrame with exactly macd, macd_signal, macd_hist."""
+        prices = _price_series(100)
+        result = compute_macd(prices)
+        assert set(result.columns) == {"macd", "macd_signal", "macd_hist"}
+
+    def test_histogram_equals_macd_minus_signal(self):
+        """macd_hist == macd − macd_signal at every row."""
+        prices = _price_series(100)
+        result = compute_macd(prices)
+        diff = result["macd"] - result["macd_signal"]
+        pd.testing.assert_series_equal(result["macd_hist"], diff, check_names=False, atol=1e-10)
+
+    def test_values_finite_after_warmup(self):
+        """All three columns are finite for every row (EWM starts immediately)."""
+        prices = _price_series(100)
+        result = compute_macd(prices, fast=12, slow=26, signal_window=9)
+        assert result.notna().all().all()
+
+    def test_macd_zero_for_constant_prices(self):
+        """Constant prices → EMA_fast == EMA_slow → MACD == 0 everywhere."""
+        prices = pd.Series([50.0] * 50)
+        result = compute_macd(prices)
+        assert result["macd"].abs().max() == pytest.approx(0.0, abs=1e-10)
+
+    def test_index_preserved(self):
+        """Output index matches the input Series index."""
+        prices = _price_series(60)
+        result = compute_macd(prices)
+        pd.testing.assert_index_equal(result.index, prices.index)
+
+
+# ---------------------------------------------------------------------------
+# compute_bollinger_bands
+# ---------------------------------------------------------------------------
+
+class TestComputeBollingerBands:
+    """Tests for Bollinger Bands."""
+
+    def test_returns_three_columns(self):
+        """Returns a DataFrame with bb_upper, bb_middle, bb_lower."""
+        prices = _price_series(50)
+        result = compute_bollinger_bands(prices, window=10)
+        assert set(result.columns) == {"bb_upper", "bb_middle", "bb_lower"}
+
+    def test_nan_before_window_fills(self):
+        """Rows before the window is full are NaN."""
+        prices = _price_series(30)
+        result = compute_bollinger_bands(prices, window=20)
+        assert result.iloc[:19].isna().all().all()
+        assert result.iloc[19:].notna().all().all()
+
+    def test_upper_above_middle_above_lower(self):
+        """upper > middle > lower for all non-NaN rows when prices are not constant."""
+        prices = _price_series(50, step=1.0)
+        result = compute_bollinger_bands(prices, window=10)
+        valid = result.dropna()
+        assert (valid["bb_upper"] > valid["bb_middle"]).all()
+        assert (valid["bb_middle"] > valid["bb_lower"]).all()
+
+    def test_middle_equals_rolling_mean(self):
+        """bb_middle matches pandas rolling mean independently."""
+        prices = _price_series(50)
+        result = compute_bollinger_bands(prices, window=10)
+        expected_middle = prices.rolling(window=10, min_periods=10).mean()
+        pd.testing.assert_series_equal(result["bb_middle"], expected_middle, check_names=False)
+
+    def test_bands_symmetric_around_middle(self):
+        """upper − middle == middle − lower at every non-NaN row."""
+        prices = _price_series(50)
+        result = compute_bollinger_bands(prices, window=10).dropna()
+        upper_dist = result["bb_upper"] - result["bb_middle"]
+        lower_dist = result["bb_middle"] - result["bb_lower"]
+        pd.testing.assert_series_equal(upper_dist, lower_dist, check_names=False, atol=1e-10)
+
+    def test_constant_prices_zero_width(self):
+        """Constant prices → std == 0 → all three bands collapse to the same value."""
+        prices = pd.Series([100.0] * 30)
+        result = compute_bollinger_bands(prices, window=10).dropna()
+        assert (result["bb_upper"] == result["bb_lower"]).all()
+
+
+# ---------------------------------------------------------------------------
+# enrich_with_indicators
+# ---------------------------------------------------------------------------
+
 class TestEnrichWithIndicators:
     def test_output_columns_present(self):
-        """Result DataFrame contains ma_short, ma_long, and rsi columns."""
+        """Result DataFrame contains Phase 1 and Phase 2 indicator columns."""
         df = _ohlcv_df(_price_series(250))
         result = enrich_with_indicators(df)
-        assert "ma_short" in result.columns
-        assert "ma_long" in result.columns
-        assert "rsi" in result.columns
+        for col in ("ma_short", "ma_long", "rsi", "macd", "macd_signal", "macd_hist",
+                    "bb_upper", "bb_middle", "bb_lower"):
+            assert col in result.columns, f"Missing column: {col}"
 
     def test_uses_adj_close_when_available(self):
         """Indicators are computed from adj_close when it contains non-NaN values."""

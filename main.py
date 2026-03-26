@@ -9,7 +9,7 @@ from trading_bot.logging_config import setup_logging
 from trading_bot.signals import IndicatorConfig, enrich_with_indicators, latest_signal
 from trading_bot.broker_ibkr import DryRunSkipped, IBKRConfig, OrderSkipped, execute_signal_as_market_order
 from trading_bot.assets import get_asset
-from trading_bot.backtest import run_backtest_fixed_size
+from trading_bot.backtest import BacktestConfig, run_backtest
 from trading_bot import config
 
 
@@ -50,6 +50,18 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=1,
         help="Fixed number of shares to trade on BUY signals during backtest (default: 1).",
+    )
+    parser.add_argument(
+        "--backtest-commission-pct",
+        type=float,
+        default=0.001,
+        help="Commission as fraction of trade value, e.g. 0.001 = 0.1%% (default: 0.001).",
+    )
+    parser.add_argument(
+        "--backtest-stop-loss-pct",
+        type=float,
+        default=0.15,
+        help="Stop-loss threshold as fraction below entry price, e.g. 0.15 = 15%% (default: 0.15).",
     )
     parser.add_argument(
         "--ibkr-enable",
@@ -118,17 +130,21 @@ def main() -> None:
     df_ind = enrich_with_indicators(df, IndicatorConfig())
 
     if args.backtest:
-        print("=== Backtest (fixed-size position) ===")
-        result = run_backtest_fixed_size(
-            df_ind,
+        print("=== Backtest ===")
+        bt_cfg = BacktestConfig(
             initial_cash=args.backtest_initial_cash,
             position_size=args.backtest_position_size,
+            commission_pct=args.backtest_commission_pct,
+            stop_loss_pct=args.backtest_stop_loss_pct,
         )
-        print(f"Initial equity:   {args.backtest_initial_cash:.2f}")
+        result = run_backtest(df_ind, cfg=bt_cfg)
+        print(f"Initial equity:   {bt_cfg.initial_cash:.2f}")
         print(f"Final equity:     {result.equity_curve.iloc[-1]:.2f}")
         print(f"Total return:     {result.total_return * 100:.2f}%")
         print(f"Benchmark return: {result.benchmark_return * 100:.2f}%  (buy-and-hold)")
         print(f"Max drawdown:     {result.max_drawdown * 100:.2f}%")
+        print(f"Commission paid:  {result.commission_paid:.2f}")
+        print(f"Stop-loss exits:  {result.stop_loss_exits}")
         print()
         print(f"Number of trades: {len(result.trades)}")
         if not result.trades.empty:
