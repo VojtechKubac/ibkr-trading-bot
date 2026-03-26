@@ -14,9 +14,10 @@ def _df(rows: list[dict]) -> pd.DataFrame:
 
 def _with_adj_close(row: dict, adj_close: float | None) -> dict:
     """Optionally inject an adj_close column into a row dict."""
+    copy = dict(row)
     if adj_close is not None:
-        row["adj_close"] = adj_close
-    return row
+        copy["adj_close"] = adj_close
+    return copy
 
 
 def _buy_row(close: float, adj_close: float | None = None) -> dict:
