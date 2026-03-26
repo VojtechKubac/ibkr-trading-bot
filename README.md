@@ -94,9 +94,7 @@ This project implements a simple, **weekly trend/momentum trading agent** based 
 
 For AI-assisted parallel development, use one isolated environment per ticket:
 
-- one Linear ticket
-- one git branch/worktree
-- one Docker container
+- one Linear ticket → one git branch/worktree → one Docker container
 
 Create a new ticket environment from the main repository checkout:
 
@@ -104,16 +102,22 @@ Create a new ticket environment from the main repository checkout:
 ./scripts/new-ticket-env.sh kua-123 short-description
 ```
 
-Then enter the created worktree and start the container:
+Enter the worktree, start the container, and launch Claude Code in allow-all mode:
 
 ```bash
 cd ../worktrees/kua-123-short-description
 set -a; source .ticket-env; set +a
 docker compose -f docker-compose.ticket.yml up -d --build
 docker compose -f docker-compose.ticket.yml exec ticket-dev bash
+# inside the container:
+claude --dangerously-skip-permissions
 ```
 
-You can repeat this for multiple tickets in parallel by using different ticket IDs/branch names.
+**What is and isn't isolated:** the container has outbound internet access (needed for API calls). The safety guarantee is host filesystem isolation — only `/workspace` (the ticket worktree) is mounted, `cap_drop: ALL` prevents privilege escalation, so the agent cannot touch the rest of your machine.
+
+To run multiple tickets in parallel, repeat with a different ticket ID; each gets its own worktree and container.
+
+To edit with Cursor, open the worktree directory directly in Cursor on the host — it sees all changes immediately since the worktree is on the host filesystem.
 
 ### Deployment Readiness
 

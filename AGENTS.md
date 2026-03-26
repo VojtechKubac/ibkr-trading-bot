@@ -90,7 +90,28 @@ docker compose -f docker-compose.ticket.yml up -d --build
 docker compose -f docker-compose.ticket.yml exec ticket-dev bash
 ```
 
-Rules for agentic sessions:
+### Running the AI agent inside the container
+
+Once inside the container, start Claude Code in allow-all mode:
+
+```bash
+claude --dangerously-skip-permissions
+```
+
+The container has outbound internet access (needed for API calls and package downloads). The safety guarantee is about **host isolation**, not network isolation:
+
+- The agent can only read/write `/workspace` (the ticket worktree). The rest of the host filesystem is not mounted.
+- `cap_drop: ALL` and `no-new-privileges` prevent privilege escalation and kernel exploits, so the agent cannot break out of the container.
+- Destructive commands like `rm -rf /` only affect the container's ephemeral filesystem, not the host.
+
+### Editing with Cursor
+
+Cursor is a GUI application and does not run headlessly inside a container. Two options:
+
+- **Direct**: Open the worktree directory (`../worktrees/kua-xxx-yyy/`) in Cursor on the host. The worktree is on the host filesystem, so Cursor sees all changes the container makes immediately.
+- **Remote**: Use [Cursor Remote SSH](https://docs.cursor.com/remote/overview) to connect into the running container if you prefer to work fully inside it.
+
+### Rules for agentic sessions
 
 - Run coding agents from the ticket worktree only, never from another ticket directory.
 - Keep container mounts limited to the ticket worktree.
