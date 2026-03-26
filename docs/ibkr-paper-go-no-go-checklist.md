@@ -106,7 +106,34 @@ Evidence:
 - Rollback owner: `________________________`
 - Incident escalation path: `________________________`
 
-## 6) Final Decision and Sign-Off
+## 6) Go-Live Transition (After GO Decision)
+
+Run this section only after sections 1-5 are complete and approved.
+
+- [ ] Confirm prerequisite validations were completed with safe defaults:
+  - [ ] `DRYRUN=true`
+  - [ ] `IBKR_ENABLE=false`
+- [ ] Confirm authorization to switch execution mode (record approver name).
+- [ ] Update `.env` for execution mode:
+  - [ ] set `DRYRUN=false`
+  - [ ] set `IBKR_ENABLE=true`
+- [ ] Restart/reload the runner process so updated env vars are active.
+- [ ] Perform post-change checks:
+  - [ ] IBKR connectivity succeeds on paper endpoint/account.
+  - [ ] First execution is limited to a small test order size.
+  - [ ] Logs confirm expected signal and order path with no unexpected errors.
+- [ ] Record audit evidence:
+  - [ ] who changed the variables
+  - [ ] who approved the change
+  - [ ] when the change was applied (UTC)
+
+Notes:
+
+- `DRYRUN` and `IBKR_ENABLE` are environment-driven runtime guards.
+- `IBKR_ENABLE` is defined in `trading_bot/config.py`.
+- Safe defaults remain `DRYRUN=true` and `IBKR_ENABLE=false`.
+
+## 7) Final Decision and Sign-Off
 
 Use exactly one decision and include links to evidence.
 
