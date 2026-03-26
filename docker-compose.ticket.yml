@@ -13,6 +13,8 @@ services:
     tty: true
     environment:
       - PYTHONUNBUFFERED=1
+      - ANTHROPIC_API_KEY    # passed through from host shell if set
+      - CURSOR_API_KEY       # passed through from host shell if set
     volumes:
       - ./:/workspace
       - pip-cache:/home/agent/.cache/pip

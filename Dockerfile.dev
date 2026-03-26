@@ -15,8 +15,14 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
 
-# Claude Code CLI — the agentic coding tool used inside the container
+# Claude Code CLI
 RUN npm install -g @anthropic-ai/claude-code
+
+# Cursor agent CLI — installs to /root/.local/bin; copy to /usr/local/bin for all users
+RUN curl -fsSL https://cursor.com/install | bash \
+    && cp -L /root/.local/bin/cursor-agent /usr/local/bin/cursor-agent \
+    && chmod +x /usr/local/bin/cursor-agent \
+    && rm -rf /root/.local
 
 RUN groupadd --gid "${USER_GID}" "${USERNAME}" \
     && useradd --uid "${USER_UID}" --gid "${USER_GID}" --create-home --shell /bin/bash "${USERNAME}"

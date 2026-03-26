@@ -92,24 +92,38 @@ docker compose -f docker-compose.ticket.yml exec ticket-dev bash
 
 ### Running the AI agent inside the container
 
-Once inside the container, start Claude Code in allow-all mode:
+Both Claude Code and Cursor CLI are installed in the container. Make sure the relevant API key is exported in your host shell before starting the container so it is passed through automatically.
+
+**Claude Code:**
 
 ```bash
+export ANTHROPIC_API_KEY=sk-ant-...   # in host shell, before docker compose up
+# inside the container:
 claude --dangerously-skip-permissions
 ```
 
-The container has outbound internet access (needed for API calls and package downloads). The safety guarantee is about **host isolation**, not network isolation:
+**Cursor agent CLI:**
+
+```bash
+export CURSOR_API_KEY=...             # in host shell, before docker compose up
+# inside the container:
+cursor-agent -p --force --sandbox disabled "implement the ticket"
+```
+
+`-p` = non-interactive/headless, `--force` = apply changes without confirmation, `--sandbox disabled` = allow the agent to run shell commands freely (equivalent to Claude Code's `--dangerously-skip-permissions`).
+
+The container has outbound internet access (needed for API calls and package downloads). The safety guarantee is **host filesystem isolation**, not network isolation:
 
 - The agent can only read/write `/workspace` (the ticket worktree). The rest of the host filesystem is not mounted.
-- `cap_drop: ALL` and `no-new-privileges` prevent privilege escalation and kernel exploits, so the agent cannot break out of the container.
+- `cap_drop: ALL` and `no-new-privileges` prevent privilege escalation, so the agent cannot break out of the container.
 - Destructive commands like `rm -rf /` only affect the container's ephemeral filesystem, not the host.
 
-### Editing with Cursor
+### Editing with Cursor GUI
 
-Cursor is a GUI application and does not run headlessly inside a container. Two options:
+Cursor GUI does not run inside the container. Two options:
 
 - **Direct**: Open the worktree directory (`../worktrees/kua-xxx-yyy/`) in Cursor on the host. The worktree is on the host filesystem, so Cursor sees all changes the container makes immediately.
-- **Remote**: Use [Cursor Remote SSH](https://docs.cursor.com/remote/overview) to connect into the running container if you prefer to work fully inside it.
+- **Remote**: Use [Cursor Remote SSH](https://docs.cursor.com/remote/overview) to connect into the running container.
 
 ### Rules for agentic sessions
 
