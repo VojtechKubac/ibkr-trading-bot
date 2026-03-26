@@ -69,7 +69,8 @@ def compute_macd(
     """MACD line (fast EMA − slow EMA), signal line, and histogram.
 
     Returns a DataFrame with columns ``macd``, ``macd_signal``, ``macd_hist``.
-    Early rows contain NaN while the slow EMA window fills.
+    Values are produced from the first row (EWM starts immediately); no NaN
+    warmup rows are generated.
     """
     ema_fast = prices.ewm(span=fast, adjust=False).mean()
     ema_slow = prices.ewm(span=slow, adjust=False).mean()
