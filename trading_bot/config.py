@@ -7,6 +7,7 @@ intentional: the function is a no-op if no ``.env`` file is present.
 from __future__ import annotations
 
 import os
+from decimal import Decimal, InvalidOperation
 
 from dotenv import load_dotenv
 
@@ -54,6 +55,18 @@ def _parse_bool_env(name: str, default: bool) -> bool:
     )
 
 
+def _parse_decimal_env(name: str, default: str) -> Decimal:
+    """Read a Decimal from the environment without float intermediates."""
+    raw = os.getenv(name)
+    value = default if raw is None else raw.strip()
+    try:
+        return Decimal(value)
+    except InvalidOperation:
+        raise ValueError(
+            f"Environment variable {name}={value!r} is not a valid decimal"
+        ) from None
+
+
 # ---------------------------------------------------------------------------
 # IBKR connection defaults
 # ---------------------------------------------------------------------------
@@ -72,7 +85,7 @@ IBKR_ENABLE: bool = _parse_bool_env("IBKR_ENABLE", False)
 SIGNAL_STRATEGY: str = os.getenv("SIGNAL_STRATEGY", "simple").strip().lower()
 STOP_LOSS_PCT: float = _parse_float_env("STOP_LOSS_PCT", 0.15)
 POSITION_ALLOCATION_PCT: float = _parse_float_env("POSITION_ALLOCATION_PCT", 0.25)
-PORTFOLIO_VALUE: float = _parse_float_env("PORTFOLIO_VALUE", 10000.0)
+PORTFOLIO_VALUE: Decimal = _parse_decimal_env("PORTFOLIO_VALUE", "10000")
 
 # ---------------------------------------------------------------------------
 # Storage

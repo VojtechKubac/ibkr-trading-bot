@@ -15,6 +15,7 @@ import os
 import sqlite3
 import sys
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Optional
 
 from trading_bot import config
@@ -41,7 +42,7 @@ WEEKLY_SYMBOLS: list[str] = [
 STOP_LOSS_PCT: float = config.STOP_LOSS_PCT
 POSITION_ALLOCATION_PCT: float = config.POSITION_ALLOCATION_PCT
 # Total portfolio value used to size orders when IBKR account query is unavailable.
-PORTFOLIO_VALUE: float = config.PORTFOLIO_VALUE
+PORTFOLIO_VALUE: Decimal = config.PORTFOLIO_VALUE
 # Explicit second guard: must be true in addition to DRYRUN=false before orders are placed.
 IBKR_ENABLE: bool = config.IBKR_ENABLE
 # Signal strategy: "simple" uses Phase 1 MA rules; "weighted" uses the composite scoring engine.
@@ -168,7 +169,8 @@ def run_symbol(symbol_key: str, conn: sqlite3.Connection) -> None:
             return
         quantity = int(position["quantity"])
     else:
-        quantity = max(1, int(PORTFOLIO_VALUE * POSITION_ALLOCATION_PCT / current_price))
+        allocation_value = PORTFOLIO_VALUE * Decimal(str(POSITION_ALLOCATION_PCT))
+        quantity = max(1, int(allocation_value / Decimal(str(current_price))))
 
     try:
         result = execute_signal_as_market_order(
