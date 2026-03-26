@@ -34,6 +34,20 @@ class ScoringConfig:
     buy_threshold: float = 0.20       # composite score > this → BUY
     sell_threshold: float = -0.20     # composite score < this → SELL
 
+    def __post_init__(self) -> None:
+        weights = (
+            self.weight_ma_trend,
+            self.weight_rsi,
+            self.weight_macd,
+            self.weight_bb_position,
+        )
+        if any(w < 0.0 for w in weights):
+            raise ValueError("Scoring weights must be non-negative.")
+        if sum(weights) <= 0.0:
+            raise ValueError("Sum of scoring weights must be greater than zero.")
+        if self.buy_threshold <= self.sell_threshold:
+            raise ValueError("buy_threshold must be greater than sell_threshold.")
+
 
 # ---------------------------------------------------------------------------
 # Normalisation helpers — each returns a value in [-1, +1] or 0.0 on NaN

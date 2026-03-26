@@ -143,10 +143,10 @@ class TestComputeCompositeScore:
         row = pd.Series({"close": float("nan"), "ma_long": float("nan"), "rsi": float("nan")})
         assert compute_composite_score(row, ScoringConfig()) == pytest.approx(0.0)
 
-    def test_zero_weights_returns_zero(self):
-        cfg = ScoringConfig(weight_ma_trend=0.0, weight_rsi=0.0, weight_macd=0.0, weight_bb_position=0.0)
-        row = pd.Series({"close": 110.0, "ma_long": 90.0, "rsi": 70.0})
-        assert compute_composite_score(row, cfg) == pytest.approx(0.0)
+    def test_zero_weights_raises(self):
+        """All-zero weights are rejected at construction time (would cause divide-by-zero)."""
+        with pytest.raises(ValueError, match="Sum of scoring weights"):
+            ScoringConfig(weight_ma_trend=0.0, weight_rsi=0.0, weight_macd=0.0, weight_bb_position=0.0)
 
 
 # ---------------------------------------------------------------------------

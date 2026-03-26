@@ -45,7 +45,12 @@ PORTFOLIO_VALUE: float = float(os.getenv("PORTFOLIO_VALUE", "10000"))
 # Explicit second guard: must be true in addition to DRYRUN=false before orders are placed.
 IBKR_ENABLE: bool = os.getenv("IBKR_ENABLE", "false").lower() == "true"
 # Signal strategy: "simple" uses Phase 1 MA rules; "weighted" uses the composite scoring engine.
-SIGNAL_STRATEGY: str = os.getenv("SIGNAL_STRATEGY", "simple")
+SIGNAL_STRATEGY: str = os.getenv("SIGNAL_STRATEGY", "simple").strip().lower()
+_VALID_SIGNAL_STRATEGIES = {"simple", "weighted"}
+if SIGNAL_STRATEGY not in _VALID_SIGNAL_STRATEGIES:
+    raise ValueError(
+        f"Invalid SIGNAL_STRATEGY={SIGNAL_STRATEGY!r}; expected one of {_VALID_SIGNAL_STRATEGIES}"
+    )
 
 
 # ---------------------------------------------------------------------------
