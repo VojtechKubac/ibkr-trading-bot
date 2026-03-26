@@ -20,6 +20,11 @@ class IndicatorConfig:
     short_ma_window: int = 50
     long_ma_window: int = 200
     rsi_window: int = 14
+    macd_fast: int = 12
+    macd_slow: int = 26
+    macd_signal: int = 9
+    bb_window: int = 20
+    bb_num_std: float = 2.0
 
 
 def compute_moving_averages(
@@ -54,12 +59,54 @@ def compute_rsi(
     return rsi
 
 
+def compute_macd(
+    prices: pd.Series,
+    *,
+    fast: int = 12,
+    slow: int = 26,
+    signal_window: int = 9,
+) -> pd.DataFrame:
+    """MACD line (fast EMA − slow EMA), signal line, and histogram.
+
+    Returns a DataFrame with columns ``macd``, ``macd_signal``, ``macd_hist``.
+    Values are produced from the first row (EWM starts immediately); no NaN
+    warmup rows are generated.
+    """
+    ema_fast = prices.ewm(span=fast, adjust=False).mean()
+    ema_slow = prices.ewm(span=slow, adjust=False).mean()
+    macd_line = ema_fast - ema_slow
+    signal_line = macd_line.ewm(span=signal_window, adjust=False).mean()
+    return pd.DataFrame(
+        {"macd": macd_line, "macd_signal": signal_line, "macd_hist": macd_line - signal_line},
+        index=prices.index,
+    )
+
+
+def compute_bollinger_bands(
+    prices: pd.Series,
+    *,
+    window: int = 20,
+    num_std: float = 2.0,
+) -> pd.DataFrame:
+    """Bollinger Bands: middle SMA ± num_std rolling standard deviations.
+
+    Returns a DataFrame with columns ``bb_upper``, ``bb_middle``, ``bb_lower``.
+    Rows with fewer than ``window`` observations are NaN.
+    """
+    middle = prices.rolling(window=window, min_periods=window).mean()
+    std = prices.rolling(window=window, min_periods=window).std(ddof=1)
+    return pd.DataFrame(
+        {"bb_upper": middle + num_std * std, "bb_middle": middle, "bb_lower": middle - num_std * std},
+        index=prices.index,
+    )
+
+
 def enrich_with_indicators(
     df: pd.DataFrame,
     cfg: IndicatorConfig | None = None,
 ) -> pd.DataFrame:
     """
-    Add MA and RSI columns to the OHLCV DataFrame.
+    Add MA, RSI, MACD, and Bollinger Band columns to the OHLCV DataFrame.
     """
     if cfg is None:
         cfg = IndicatorConfig()
@@ -70,6 +117,13 @@ def enrich_with_indicators(
     df["ma_short"] = compute_moving_averages(close, cfg.short_ma_window)
     df["ma_long"] = compute_moving_averages(close, cfg.long_ma_window)
     df["rsi"] = compute_rsi(close, cfg.rsi_window)
+
+    macd_df = compute_macd(close, fast=cfg.macd_fast, slow=cfg.macd_slow, signal_window=cfg.macd_signal)
+    df[["macd", "macd_signal", "macd_hist"]] = macd_df
+
+    bb_df = compute_bollinger_bands(close, window=cfg.bb_window, num_std=cfg.bb_num_std)
+    df[["bb_upper", "bb_middle", "bb_lower"]] = bb_df
+
     return df
 
 
