@@ -90,3 +90,28 @@ This project implements a simple, **weekly trend/momentum trading agent** based 
 - This is **Phase 1 only**: data + signal computation and a single‑run CLI.
 - Paper trading, broker integration (IBKR), scheduling, and monitoring will be added in later phases.
 
+### Isolated Ticket Workflow (Agentic)
+
+For AI-assisted parallel development, use one isolated environment per ticket:
+
+- one Linear ticket
+- one git branch/worktree
+- one Docker container
+
+Create a new ticket environment from the main repository checkout:
+
+```bash
+./scripts/new-ticket-env.sh kua-123 short-description
+```
+
+Then enter the created worktree and start the container:
+
+```bash
+cd ../worktrees/kua-123-short-description
+set -a; source .ticket-env; set +a
+docker compose -f docker-compose.ticket.yml up -d --build
+docker compose -f docker-compose.ticket.yml exec ticket-dev bash
+```
+
+You can repeat this for multiple tickets in parallel by using different ticket IDs/branch names.
+

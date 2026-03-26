@@ -65,11 +65,37 @@ DRYRUN=true python runweekly.py                      # coming soon
 ## Workflow
 
 - One Linear ticket = one PR.
+- One Linear ticket = one dedicated git worktree + one branch + one Docker container.
 - **Always branch from `main`**, never from another feature branch.
 - Branch naming: `kua-{number}-short-description` (e.g. `kua-19-agent-docs`).
 - All CodeRabbit review comments must be resolved before requesting human review.
 - **When working on an open PR, always check for merge conflicts first** (`git fetch origin main && git merge origin/main`). Resolve any conflicts before making further changes or pushing.
 - Do not merge your own PRs.
+
+### Ticket Environment Bootstrap
+
+Use the helper script from the main repository checkout:
+
+```bash
+./scripts/new-ticket-env.sh kua-123 short-description
+```
+
+This creates a new worktree under `../worktrees/` from `origin/main` and writes a `.ticket-env` file with container/runtime variables.
+
+Inside the new worktree, start the ticket container:
+
+```bash
+set -a; source .ticket-env; set +a
+docker compose -f docker-compose.ticket.yml up -d --build
+docker compose -f docker-compose.ticket.yml exec ticket-dev bash
+```
+
+Rules for agentic sessions:
+
+- Run coding agents from the ticket worktree only, never from another ticket directory.
+- Keep container mounts limited to the ticket worktree.
+- For parallel ticket work, create one worktree/container pair per ticket.
+- Stop and remove ticket containers when work is complete.
 
 ## What NOT to Do
 
