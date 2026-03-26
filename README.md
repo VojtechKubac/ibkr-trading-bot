@@ -115,3 +115,7 @@ docker compose -f docker-compose.ticket.yml exec ticket-dev bash
 
 You can repeat this for multiple tickets in parallel by using different ticket IDs/branch names.
 
+### Deployment Readiness
+
+- For IBKR paper rollout go/no-go checks, follow `docs/ibkr-paper-go-no-go-checklist.md`.
+

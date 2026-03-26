@@ -15,6 +15,7 @@ import os
 import sqlite3
 import sys
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Optional
 
 from trading_bot import config
@@ -38,14 +39,14 @@ logger = logging.getLogger(__name__)
 WEEKLY_SYMBOLS: list[str] = [
     s.strip() for s in os.getenv("WEEKLY_SYMBOLS", "vwce").split(",") if s.strip()
 ]
-STOP_LOSS_PCT: float = float(os.getenv("STOP_LOSS_PCT", "0.15"))
-POSITION_ALLOCATION_PCT: float = float(os.getenv("POSITION_ALLOCATION_PCT", "0.25"))
+STOP_LOSS_PCT: float = config.STOP_LOSS_PCT
+POSITION_ALLOCATION_PCT: float = config.POSITION_ALLOCATION_PCT
 # Total portfolio value used to size orders when IBKR account query is unavailable.
-PORTFOLIO_VALUE: float = float(os.getenv("PORTFOLIO_VALUE", "10000"))
+PORTFOLIO_VALUE: Decimal = config.PORTFOLIO_VALUE
 # Explicit second guard: must be true in addition to DRYRUN=false before orders are placed.
-IBKR_ENABLE: bool = os.getenv("IBKR_ENABLE", "false").lower() == "true"
+IBKR_ENABLE: bool = config.IBKR_ENABLE
 # Signal strategy: "simple" uses Phase 1 MA rules; "weighted" uses the composite scoring engine.
-SIGNAL_STRATEGY: str = os.getenv("SIGNAL_STRATEGY", "simple").strip().lower()
+SIGNAL_STRATEGY: str = config.SIGNAL_STRATEGY
 _VALID_SIGNAL_STRATEGIES = {"simple", "weighted"}
 if SIGNAL_STRATEGY not in _VALID_SIGNAL_STRATEGIES:
     raise ValueError(
@@ -150,7 +151,7 @@ def run_symbol(symbol_key: str, conn: sqlite3.Connection) -> None:
 
     logger.info("%s: signal=%s price=%.2f", symbol_key, signal, current_price)
 
-    if os.getenv("DRYRUN", "true").lower() != "false":
+    if config.DRYRUN:
         logger.info("%s: DRYRUN — would execute: %s", symbol_key, signal)
         return
 
@@ -168,7 +169,8 @@ def run_symbol(symbol_key: str, conn: sqlite3.Connection) -> None:
             return
         quantity = int(position["quantity"])
     else:
-        quantity = max(1, int(PORTFOLIO_VALUE * POSITION_ALLOCATION_PCT / current_price))
+        allocation_value = PORTFOLIO_VALUE * Decimal(str(POSITION_ALLOCATION_PCT))
+        quantity = max(1, int(allocation_value / Decimal(str(current_price))))
 
     try:
         result = execute_signal_as_market_order(
@@ -208,7 +210,7 @@ def run_symbol(symbol_key: str, conn: sqlite3.Connection) -> None:
 def main() -> None:
     """Run the weekly signal check and optional execution for all configured assets."""
     setup_logging()
-    logger.info("Weekly run starting — symbols=%s dryrun=%s", WEEKLY_SYMBOLS, os.getenv("DRYRUN", "true"))
+    logger.info("Weekly run starting — symbols=%s dryrun=%s", WEEKLY_SYMBOLS, config.DRYRUN)
 
     conn = init_db(config.DB_PATH)
     try:
