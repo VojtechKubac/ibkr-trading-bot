@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from typing import Literal
 
 import pandas as pd
 
@@ -45,6 +46,7 @@ def run_backtest(
     - Uses Phase 1 signal on each bar.
     - Enters/exits with a fixed share size configured via ``cfg.position_size``.
     - Commission is deducted on both BUY and SELL.
+    - Orders are executed on the next bar to avoid same-bar signal/fill bias.
     - Stop-loss is checked on every bar; if triggered the SELL is marked in the
       trades DataFrame and counted in ``stop_loss_exits``.
     - Execution price uses ``adj_close`` when present, else ``close``.
@@ -73,19 +75,14 @@ def run_backtest(
     trades: list[dict] = []
     commission_paid = 0.0
     stop_loss_exits = 0
+    pending_side: Literal["BUY", "SELL"] | None = None
+    pending_stop_loss = False
 
     for ts, row in df_with_indicators.iterrows():
         price = float(row[price_col])
-        signal: Signal = rule_phase1_signal_for_row(row)
 
-        # Stop-loss overrides the signal when the position is open.
-        stop_loss_triggered = False
-        if position > 0 and entry_price > 0:
-            if (price - entry_price) / entry_price <= -cfg.stop_loss_pct:
-                signal = "SELL"
-                stop_loss_triggered = True
-
-        if signal == "BUY" and position == 0:
+        # Execute any order scheduled on the previous bar.
+        if pending_side == "BUY" and position == 0:
             trade_value = cfg.position_size * price
             commission = max(trade_value * cfg.commission_pct, cfg.commission_min)
             total_cost = trade_value + commission
@@ -102,13 +99,12 @@ def run_backtest(
                     "commission": commission,
                     "stop_loss": False,
                 })
-
-        elif signal == "SELL" and position > 0:
+        elif pending_side == "SELL" and position > 0:
             proceeds = position * price
             commission = max(proceeds * cfg.commission_pct, cfg.commission_min)
             cash += proceeds - commission
             commission_paid += commission
-            if stop_loss_triggered:
+            if pending_stop_loss:
                 stop_loss_exits += 1
             trades.append({
                 "timestamp": ts,
@@ -116,10 +112,27 @@ def run_backtest(
                 "price": price,
                 "size": position,
                 "commission": commission,
-                "stop_loss": stop_loss_triggered,
+                "stop_loss": pending_stop_loss,
             })
             position = 0
             entry_price = 0.0
+
+        pending_side = None
+        pending_stop_loss = False
+        signal: Signal = rule_phase1_signal_for_row(row)
+
+        # Stop-loss overrides the signal when the position is open.
+        stop_loss_triggered = False
+        if position > 0 and entry_price > 0:
+            if (price - entry_price) / entry_price <= -cfg.stop_loss_pct:
+                signal = "SELL"
+                stop_loss_triggered = True
+
+        if signal == "BUY" and position == 0:
+            pending_side = "BUY"
+        elif signal == "SELL" and position > 0:
+            pending_side = "SELL"
+            pending_stop_loss = stop_loss_triggered
 
         equity.append((ts, cash + position * price))
 

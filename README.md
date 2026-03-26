@@ -68,6 +68,7 @@ This project implements a simple, **weekly trend/momentum trading agent** based 
 
    - `--backtest-initial-cash`: starting equity (default: 10000).
    - `--backtest-position-size`: fixed number of shares to trade on BUY (default: 1).
+   - Backtest timing uses **next-bar execution**: signals are evaluated on bar `t`, and orders fill on bar `t+1` to avoid same-bar bias.
 
 4. **(Optional) Execute via IBKR — use paper trading first!**
 

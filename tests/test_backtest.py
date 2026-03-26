@@ -47,20 +47,20 @@ def _hold_row(close: float, adj_close: float | None = None) -> dict:
 class TestRunBacktestFixedSize:
     def test_profitable_round_trip_increases_equity(self):
         """Equity grows when we buy at 50 and sell at 100."""
-        df = _df([_buy_row(50.0), _sell_row(100.0)])
+        df = _df([_buy_row(50.0), _sell_row(100.0), _hold_row(200.0)])
         result = run_backtest_fixed_size(df, initial_cash=10_000.0, position_size=1)
         assert result.equity_curve.iloc[-1] > result.equity_curve.iloc[0]
 
     def test_correct_trade_count(self):
         """One BUY + one SELL produces exactly two trade rows."""
-        df = _df([_buy_row(100.0), _sell_row(80.0)])
+        df = _df([_buy_row(100.0), _sell_row(80.0), _hold_row(80.0)])
         result = run_backtest_fixed_size(df, initial_cash=10_000.0, position_size=1)
         assert len(result.trades) == 2
         assert list(result.trades["side"]) == ["BUY", "SELL"]
 
     def test_total_return_formula(self):
         """total_return equals (final_equity / initial_cash) - 1."""
-        df = _df([_buy_row(50.0), _sell_row(100.0)])
+        df = _df([_buy_row(50.0), _sell_row(100.0), _hold_row(100.0)])
         initial = 10_000.0
         result = run_backtest_fixed_size(df, initial_cash=initial, position_size=1)
         expected = (result.equity_curve.iloc[-1] / initial) - 1.0
@@ -99,8 +99,15 @@ class TestRunBacktestFixedSize:
 
     def test_uses_adj_close_for_execution_price(self):
         """When adj_close is present, it is used as the execution price, not close."""
-        # Buy at adj_close=40 (not close=50), sell at adj_close=80 (not close=100)
-        df = _df([_buy_row(50.0, adj_close=40.0), _sell_row(100.0, adj_close=80.0)])
+        # BUY signal on row1 fills on row2 at adj_close=40; SELL signal on row2
+        # fills on row3 at adj_close=80.
+        df = _df(
+            [
+                _buy_row(50.0, adj_close=50.0),
+                _sell_row(100.0, adj_close=40.0),
+                _hold_row(100.0, adj_close=80.0),
+            ]
+        )
         result = run_backtest_fixed_size(df, initial_cash=10_000.0, position_size=1)
         assert len(result.trades) == 2
         buy_price = result.trades.iloc[0]["price"]
@@ -122,11 +129,25 @@ class TestRunBacktestFixedSize:
 
     def test_alias_backward_compat(self):
         """run_backtest_fixed_size alias produces identical results to run_backtest with same config."""
-        df = _df([_buy_row(50.0), _sell_row(100.0)])
+        df = _df([_buy_row(50.0), _sell_row(100.0), _hold_row(100.0)])
         alias = run_backtest_fixed_size(df, initial_cash=10_000.0, position_size=1)
         direct = run_backtest(df, cfg=BacktestConfig(initial_cash=10_000.0, position_size=1))
         assert alias.total_return == pytest.approx(direct.total_return)
         assert alias.commission_paid == pytest.approx(direct.commission_paid)
+
+    def test_trades_execute_on_next_bar(self):
+        """Signal at bar t is executed at bar t+1, never on the same bar."""
+        df = _df([_buy_row(100.0), _sell_row(90.0), _hold_row(95.0)])
+        result = run_backtest_fixed_size(df, initial_cash=10_000.0, position_size=1)
+        assert len(result.trades) == 2
+        assert result.trades.iloc[0]["timestamp"] == df.index[1]
+        assert result.trades.iloc[1]["timestamp"] == df.index[2]
+
+    def test_last_bar_signal_is_not_filled(self):
+        """A signal on the last bar cannot execute because there is no next bar."""
+        df = _df([_hold_row(100.0), _buy_row(110.0)])
+        result = run_backtest_fixed_size(df, initial_cash=10_000.0, position_size=1)
+        assert result.trades.empty
 
 
 class TestCommission:
@@ -134,7 +155,7 @@ class TestCommission:
 
     def test_commission_deducted_on_buy_and_sell(self):
         """commission_paid > 0 when at least one round-trip trade occurs."""
-        df = _df([_buy_row(100.0), _sell_row(200.0)])
+        df = _df([_buy_row(100.0), _sell_row(200.0), _hold_row(200.0)])
         result = run_backtest(
             df, cfg=BacktestConfig(initial_cash=10_000.0, commission_pct=0.001, commission_min=1.0)
         )
@@ -142,7 +163,7 @@ class TestCommission:
 
     def test_commission_lowers_equity_vs_zero_commission(self):
         """Final equity is lower when commission is applied than when it is zero."""
-        df = _df([_buy_row(100.0), _sell_row(200.0)])
+        df = _df([_buy_row(100.0), _sell_row(200.0), _hold_row(200.0)])
         no_comm = run_backtest(df, cfg=BacktestConfig(commission_pct=0.0, commission_min=0.0))
         with_comm = run_backtest(df, cfg=BacktestConfig(commission_pct=0.001, commission_min=1.0))
         assert with_comm.equity_curve.iloc[-1] < no_comm.equity_curve.iloc[-1]
@@ -150,7 +171,7 @@ class TestCommission:
     def test_minimum_commission_applied(self):
         """Commission equals commission_min when pct * value < commission_min."""
         # trade value = 1 share * 1.0 = 1.0, pct commission = 0.001 * 1.0 = 0.001 < min 1.0
-        df = _df([_buy_row(1.0), _sell_row(2.0)])
+        df = _df([_buy_row(1.0), _sell_row(2.0), _hold_row(2.0)])
         result = run_backtest(
             df, cfg=BacktestConfig(initial_cash=10_000.0, commission_pct=0.001, commission_min=1.0)
         )
@@ -169,8 +190,8 @@ class TestStopLoss:
 
     def test_stop_loss_triggers_sell_before_signal(self):
         """A drop > stop_loss_pct forces a SELL even without a normal sell signal."""
-        # Row 1: BUY at 100; Row 2: HOLD at 80 (–20 % < –15 % threshold)
-        df = _df([_buy_row(100.0), _hold_row(80.0)])
+        # Row 1: BUY signal, row 2: BUY fills at 80, row 3: stop-loss trigger observed at 60.
+        df = _df([_buy_row(100.0), _hold_row(80.0), _hold_row(60.0), _hold_row(60.0)])
         result = run_backtest(df, cfg=BacktestConfig(stop_loss_pct=0.15, commission_pct=0.0, commission_min=0.0))
         assert result.stop_loss_exits == 1
         sell_row = result.trades[result.trades["side"] == "SELL"].iloc[0]
@@ -178,13 +199,13 @@ class TestStopLoss:
 
     def test_no_stop_loss_when_price_recovers(self):
         """stop_loss_exits == 0 when price never drops enough below entry."""
-        # BUY at 100, hold at 95 (–5 %), then normal SELL
-        df = _df([_buy_row(100.0), _hold_row(95.0), _sell_row(90.0)])
+        # BUY fills at 95, then normal SELL signal at 90 triggers non-stop-loss exit on next bar.
+        df = _df([_buy_row(100.0), _hold_row(95.0), _sell_row(90.0), _hold_row(90.0)])
         result = run_backtest(df, cfg=BacktestConfig(stop_loss_pct=0.15, commission_pct=0.0, commission_min=0.0))
         assert result.stop_loss_exits == 0
 
     def test_stop_loss_increments_counter(self):
         """stop_loss_exits counts only stop-loss-triggered SELLs, not normal SELLs."""
-        df = _df([_buy_row(100.0), _sell_row(90.0)])  # normal sell, no stop-loss
+        df = _df([_buy_row(100.0), _sell_row(90.0), _hold_row(90.0)])  # normal sell, no stop-loss
         result = run_backtest(df, cfg=BacktestConfig(stop_loss_pct=0.15, commission_pct=0.0, commission_min=0.0))
         assert result.stop_loss_exits == 0
