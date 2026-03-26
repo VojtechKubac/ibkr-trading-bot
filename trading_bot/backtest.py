@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from decimal import Decimal
 from dataclasses import dataclass
 from typing import Literal
 
@@ -124,7 +125,11 @@ def run_backtest(
         # Stop-loss overrides the signal when the position is open.
         stop_loss_triggered = False
         if position > 0 and entry_price > 0:
-            if (price - entry_price) / entry_price <= -cfg.stop_loss_pct:
+            price_dec = Decimal(str(price))
+            entry_price_dec = Decimal(str(entry_price))
+            stop_loss_pct_dec = Decimal(str(cfg.stop_loss_pct))
+            loss_ratio = (price_dec - entry_price_dec) / entry_price_dec
+            if loss_ratio <= -stop_loss_pct_dec:
                 signal = "SELL"
                 stop_loss_triggered = True
 
