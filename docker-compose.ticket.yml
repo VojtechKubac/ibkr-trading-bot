@@ -7,7 +7,7 @@ services:
         USER_UID: ${HOST_UID:-1000}
         USER_GID: ${HOST_GID:-1000}
     image: trading-ticket-dev:latest
-    container_name: ${TICKET_CONTAINER_NAME:-trading-ticket-dev}
+    container_name: ${TICKET_CONTAINER_NAME:?Load .ticket-env first (set -a; source .ticket-env; set +a)}
     working_dir: /workspace
     stdin_open: true
     tty: true

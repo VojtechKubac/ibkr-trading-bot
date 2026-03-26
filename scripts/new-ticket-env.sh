@@ -11,8 +11,20 @@ fi
 TICKET_ID_RAW="$1"
 SLUG_RAW="$2"
 
-TICKET_ID="$(echo "${TICKET_ID_RAW}" | tr '[:upper:]' '[:lower:]')"
-SLUG="$(echo "${SLUG_RAW}" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')"
+normalize_slug() {
+  printf '%s' "$1" \
+    | tr '[:upper:]' '[:lower:]' \
+    | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//; s/-{2,}/-/g'
+}
+
+TICKET_ID="$(normalize_slug "${TICKET_ID_RAW}")"
+SLUG="$(normalize_slug "${SLUG_RAW}")"
+
+if [[ -z "${TICKET_ID}" || -z "${SLUG}" ]]; then
+  echo "Error: ticket-id and short-description must contain at least one alphanumeric character."
+  exit 1
+fi
+
 BRANCH_NAME="${TICKET_ID}-${SLUG}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -32,13 +44,13 @@ cd "${REPO_ROOT}"
 git fetch origin main
 git worktree add -b "${BRANCH_NAME}" "${TARGET_DIR}" origin/main
 
-cat > "${TARGET_DIR}/.ticket-env" <<EOF
-TICKET_ID=${TICKET_ID}
-BRANCH_NAME=${BRANCH_NAME}
-TICKET_CONTAINER_NAME=trading-${BRANCH_NAME}
-HOST_UID=$(id -u)
-HOST_GID=$(id -g)
-EOF
+{
+  printf 'TICKET_ID=%q\n' "${TICKET_ID}"
+  printf 'BRANCH_NAME=%q\n' "${BRANCH_NAME}"
+  printf 'TICKET_CONTAINER_NAME=%q\n' "trading-${BRANCH_NAME}"
+  printf 'HOST_UID=%q\n' "$(id -u)"
+  printf 'HOST_GID=%q\n' "$(id -g)"
+} > "${TARGET_DIR}/.ticket-env"
 
 echo
 echo "Created worktree: ${TARGET_DIR}"
