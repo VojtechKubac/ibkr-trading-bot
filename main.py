@@ -141,6 +141,7 @@ def main() -> None:
         print(f"Initial equity:   {bt_cfg.initial_cash:.2f}")
         print(f"Final equity:     {result.equity_curve.iloc[-1]:.2f}")
         print(f"Total return:     {result.total_return * 100:.2f}%")
+        print(f"Benchmark return: {result.benchmark_return * 100:.2f}%  (buy-and-hold)")
         print(f"Max drawdown:     {result.max_drawdown * 100:.2f}%")
         print(f"Commission paid:  {result.commission_paid:.2f}")
         print(f"Stop-loss exits:  {result.stop_loss_exits}")

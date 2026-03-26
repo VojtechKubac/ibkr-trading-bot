@@ -31,6 +31,7 @@ class BacktestResult:
     max_drawdown: float
     commission_paid: float
     stop_loss_exits: int
+    benchmark_return: float
 
 
 def run_backtest(
@@ -59,6 +60,11 @@ def run_backtest(
         raise ValueError("df_with_indicators must contain at least one row")
 
     price_col = "adj_close" if "adj_close" in df_with_indicators.columns else "close"
+
+    benchmark_return = (
+        float(df_with_indicators[price_col].iloc[-1])
+        / float(df_with_indicators[price_col].iloc[0])
+    ) - 1.0
 
     cash = cfg.initial_cash
     position = 0        # number of shares held
@@ -130,12 +136,13 @@ def run_backtest(
 
     logger.debug(
         "Backtest complete: %d trades, return=%.2f%%, drawdown=%.2f%%, "
-        "commission=%.2f, stop_loss_exits=%d",
+        "commission=%.2f, stop_loss_exits=%d, benchmark=%.2f%%",
         len(trades),
         float(total_return) * 100,
         max_drawdown * 100,
         commission_paid,
         stop_loss_exits,
+        benchmark_return * 100,
     )
     return BacktestResult(
         equity_curve=equity_series,
@@ -144,6 +151,7 @@ def run_backtest(
         max_drawdown=max_drawdown,
         commission_paid=commission_paid,
         stop_loss_exits=stop_loss_exits,
+        benchmark_return=benchmark_return,
     )
 
 

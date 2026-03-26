@@ -12,19 +12,36 @@ def _df(rows: list[dict]) -> pd.DataFrame:
     return pd.DataFrame(rows, index=idx)
 
 
-def _buy_row(close: float) -> dict:
+def _with_adj_close(row: dict, adj_close: float | None) -> dict:
+    """Optionally inject an adj_close column into a row dict."""
+    copy = dict(row)
+    if adj_close is not None:
+        copy["adj_close"] = adj_close
+    return copy
+
+
+def _buy_row(close: float, adj_close: float | None = None) -> dict:
     """Row that triggers BUY: price > ma_long and price > ma_short."""
-    return {"close": close, "ma_short": close * 0.9, "ma_long": close * 0.8, "rsi": 55.0}
+    return _with_adj_close(
+        {"close": close, "ma_short": close * 0.9, "ma_long": close * 0.8, "rsi": 55.0},
+        adj_close,
+    )
 
 
-def _sell_row(close: float) -> dict:
+def _sell_row(close: float, adj_close: float | None = None) -> dict:
     """Row that triggers SELL: price < ma_long."""
-    return {"close": close, "ma_short": close * 1.1, "ma_long": close * 1.2, "rsi": 45.0}
+    return _with_adj_close(
+        {"close": close, "ma_short": close * 1.1, "ma_long": close * 1.2, "rsi": 45.0},
+        adj_close,
+    )
 
 
-def _hold_row(close: float) -> dict:
+def _hold_row(close: float, adj_close: float | None = None) -> dict:
     """Row that triggers HOLD: NaN MAs (window not filled)."""
-    return {"close": close, "ma_short": float("nan"), "ma_long": float("nan"), "rsi": 50.0}
+    return _with_adj_close(
+        {"close": close, "ma_short": float("nan"), "ma_long": float("nan"), "rsi": 50.0},
+        adj_close,
+    )
 
 
 class TestRunBacktestFixedSize:
@@ -73,6 +90,35 @@ class TestRunBacktestFixedSize:
         df = _df([_hold_row(100.0)] * 10)
         result = run_backtest_fixed_size(df, initial_cash=10_000.0, position_size=1)
         assert len(result.equity_curve) == len(df)
+
+    def test_benchmark_return_buy_and_hold(self):
+        """benchmark_return equals (last_price / first_price) - 1 over the full period."""
+        df = _df([_hold_row(100.0), _hold_row(150.0)])
+        result = run_backtest_fixed_size(df, initial_cash=10_000.0, position_size=1)
+        assert result.benchmark_return == pytest.approx(0.5)
+
+    def test_uses_adj_close_for_execution_price(self):
+        """When adj_close is present, it is used as the execution price, not close."""
+        # Buy at adj_close=40 (not close=50), sell at adj_close=80 (not close=100)
+        df = _df([_buy_row(50.0, adj_close=40.0), _sell_row(100.0, adj_close=80.0)])
+        result = run_backtest_fixed_size(df, initial_cash=10_000.0, position_size=1)
+        assert len(result.trades) == 2
+        buy_price = result.trades.iloc[0]["price"]
+        sell_price = result.trades.iloc[1]["price"]
+        assert buy_price == pytest.approx(40.0)
+        assert sell_price == pytest.approx(80.0)
+
+    def test_benchmark_uses_adj_close_when_present(self):
+        """benchmark_return is computed from adj_close when the column exists."""
+        df = _df([_hold_row(100.0, adj_close=50.0), _hold_row(200.0, adj_close=100.0)])
+        result = run_backtest_fixed_size(df, initial_cash=10_000.0, position_size=1)
+        # adj_close goes 50 -> 100, so benchmark = +100%
+        assert result.benchmark_return == pytest.approx(1.0)
+
+    def test_raises_on_empty_dataframe(self):
+        """Empty input raises ValueError rather than an opaque IndexError."""
+        with pytest.raises(ValueError, match="at least one row"):
+            run_backtest_fixed_size(pd.DataFrame(), initial_cash=10_000.0)
 
     def test_alias_backward_compat(self):
         """run_backtest_fixed_size alias produces identical results to run_backtest with same config."""
