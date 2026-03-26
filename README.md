@@ -90,3 +90,7 @@ This project implements a simple, **weekly trend/momentum trading agent** based 
 - This is **Phase 1 only**: data + signal computation and a single‑run CLI.
 - Paper trading, broker integration (IBKR), scheduling, and monitoring will be added in later phases.
 
+### Deployment Readiness
+
+- For IBKR paper rollout go/no-go checks, follow `docs/ibkr-paper-go-no-go-checklist.md`.
+
