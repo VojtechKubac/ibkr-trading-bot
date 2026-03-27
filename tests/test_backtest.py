@@ -209,3 +209,43 @@ class TestStopLoss:
         df = _df([_buy_row(100.0), _sell_row(90.0), _hold_row(90.0)])  # normal sell, no stop-loss
         result = run_backtest(df, cfg=BacktestConfig(stop_loss_pct=0.15, commission_pct=0.0, commission_min=0.0))
         assert result.stop_loss_exits == 0
+
+
+class TestEquitySizing:
+    def test_percent_equity_increases_size_with_equity_growth(self):
+        df = _df(
+            [
+                _buy_row(10.0),
+                _hold_row(10.0),  # BUY executes here at 10
+                _sell_row(20.0),
+                _hold_row(20.0),  # SELL executes here at 20
+                _buy_row(10.0),
+                _hold_row(10.0),  # second BUY executes here at 10
+            ]
+        )
+        cfg = BacktestConfig(
+            initial_cash=1000.0,
+            sizing_mode="percent_equity",
+            percent_equity=0.5,
+            min_position_size=1,
+            commission_pct=0.0,
+            commission_min=0.0,
+        )
+        result = run_backtest(df, cfg=cfg)
+        buys = result.trades[result.trades["side"] == "BUY"]
+        assert len(buys) == 2
+        assert buys.iloc[0]["size"] == 50
+        assert buys.iloc[1]["size"] == 75
+
+    def test_percent_equity_respects_min_position_size(self):
+        df = _df([_buy_row(100.0), _hold_row(100.0), _hold_row(100.0)])
+        cfg = BacktestConfig(
+            initial_cash=100.0,
+            sizing_mode="percent_equity",
+            percent_equity=0.5,
+            min_position_size=2,
+            commission_pct=0.0,
+            commission_min=0.0,
+        )
+        result = run_backtest(df, cfg=cfg)
+        assert result.trades.empty

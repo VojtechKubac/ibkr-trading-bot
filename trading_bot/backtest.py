@@ -12,12 +12,47 @@ from trading_bot.signals import Signal, rule_phase1_signal_for_row
 logger = logging.getLogger(__name__)
 
 
+def _compute_buy_size(*, cash: float, price: float, cfg: BacktestConfig) -> int:
+    """Compute BUY size according to cfg, respecting cash + commission."""
+
+    if cfg.sizing_mode == "fixed":
+        return int(cfg.position_size)
+
+    if price <= 0:
+        return 0
+
+    pct = float(cfg.percent_equity)
+    if pct <= 0:
+        return 0
+    if pct > 1:
+        pct = 1.0
+
+    target_value = cash * pct
+    size = int(target_value // price)
+    if size < int(cfg.min_position_size):
+        return 0
+
+    # Ensure cash coverage including commission (commission depends on trade value).
+    while size >= int(cfg.min_position_size):
+        trade_value = size * price
+        commission = max(trade_value * cfg.commission_pct, cfg.commission_min)
+        total_cost = trade_value + commission
+        if total_cost <= cash + 1e-12:
+            return size
+        size -= 1
+
+    return 0
+
+
 @dataclass
 class BacktestConfig:
     """Configuration for a single-asset backtest run."""
 
     initial_cash: float = 10_000.0
+    sizing_mode: Literal["fixed", "percent_equity"] = "fixed"
     position_size: int = 1
+    percent_equity: float = 1.0
+    min_position_size: int = 1
     commission_pct: float = 0.001   # 0.1 % of trade value
     commission_min: float = 1.0     # minimum commission per trade (EUR/USD)
     stop_loss_pct: float = 0.15     # force SELL when price drops >15 % from entry
@@ -45,7 +80,7 @@ def run_backtest(
     Single-asset backtest with optional commission costs and stop-loss simulation.
 
     - Uses Phase 1 signal on each bar.
-    - Enters/exits with a fixed share size configured via ``cfg.position_size``.
+    - Enters/exits using either fixed share size or percent-of-equity sizing.
     - Commission is deducted on both BUY and SELL.
     - Orders are executed on the next bar to avoid same-bar signal/fill bias.
     - Stop-loss is checked on every bar; if triggered the SELL is marked in the
@@ -84,22 +119,24 @@ def run_backtest(
 
         # Execute any order scheduled on the previous bar.
         if pending_side == "BUY" and position == 0:
-            trade_value = cfg.position_size * price
-            commission = max(trade_value * cfg.commission_pct, cfg.commission_min)
-            total_cost = trade_value + commission
-            if total_cost <= cash:
-                cash -= total_cost
-                position += cfg.position_size
-                entry_price = price
-                commission_paid += commission
-                trades.append({
-                    "timestamp": ts,
-                    "side": "BUY",
-                    "price": price,
-                    "size": cfg.position_size,
-                    "commission": commission,
-                    "stop_loss": False,
-                })
+            buy_size = _compute_buy_size(cash=cash, price=price, cfg=cfg)
+            if buy_size > 0:
+                trade_value = buy_size * price
+                commission = max(trade_value * cfg.commission_pct, cfg.commission_min)
+                total_cost = trade_value + commission
+                if total_cost <= cash:
+                    cash -= total_cost
+                    position += buy_size
+                    entry_price = price
+                    commission_paid += commission
+                    trades.append({
+                        "timestamp": ts,
+                        "side": "BUY",
+                        "price": price,
+                        "size": buy_size,
+                        "commission": commission,
+                        "stop_loss": False,
+                    })
         elif pending_side == "SELL" and position > 0:
             proceeds = position * price
             commission = max(proceeds * cfg.commission_pct, cfg.commission_min)

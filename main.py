@@ -52,6 +52,24 @@ def parse_args() -> argparse.Namespace:
         help="Fixed number of shares to trade on BUY signals during backtest (default: 1).",
     )
     parser.add_argument(
+        "--backtest-sizing-mode",
+        choices=["fixed", "percent_equity"],
+        default="fixed",
+        help="Backtest sizing mode: fixed shares or percent-of-equity.",
+    )
+    parser.add_argument(
+        "--backtest-percent-equity",
+        type=float,
+        default=1.0,
+        help="When --backtest-sizing-mode=percent_equity, fraction of equity to allocate (0..1).",
+    )
+    parser.add_argument(
+        "--backtest-min-position-size",
+        type=int,
+        default=1,
+        help="Minimum share size to allow a BUY in percent_equity sizing (default: 1).",
+    )
+    parser.add_argument(
         "--backtest-commission-pct",
         type=float,
         default=0.001,
@@ -133,12 +151,16 @@ def main() -> None:
         print("=== Backtest ===")
         bt_cfg = BacktestConfig(
             initial_cash=args.backtest_initial_cash,
+            sizing_mode=args.backtest_sizing_mode,
             position_size=args.backtest_position_size,
+            percent_equity=args.backtest_percent_equity,
+            min_position_size=args.backtest_min_position_size,
             commission_pct=args.backtest_commission_pct,
             stop_loss_pct=args.backtest_stop_loss_pct,
         )
         result = run_backtest(df_ind, cfg=bt_cfg)
         print(f"Initial equity:   {bt_cfg.initial_cash:.2f}")
+        print(f"Sizing mode:      {bt_cfg.sizing_mode}")
         print(f"Final equity:     {result.equity_curve.iloc[-1]:.2f}")
         print(f"Total return:     {result.total_return * 100:.2f}%")
         print(f"Benchmark return: {result.benchmark_return * 100:.2f}%  (buy-and-hold)")
