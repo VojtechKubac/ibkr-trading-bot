@@ -92,7 +92,7 @@ docker compose -f docker-compose.ticket.yml exec ticket-dev bash
 
 ### Running the AI agent inside the container
 
-Both Claude Code and Cursor CLI are installed in the container. Make sure the relevant API key is exported in your host shell before starting the container so it is passed through automatically.
+Both Claude Code and Cursor CLI are installed in the container. Only `ANTHROPIC_API_KEY` and `CURSOR_API_KEY` are forwarded from the host shell; IBKR credentials are intentionally not forwarded (see `docker-compose.ticket.yml`).
 
 **Claude Code:**
 
@@ -117,6 +117,7 @@ The container has outbound internet access (needed for API calls and package dow
 - The agent can only read/write `/workspace` (the ticket worktree). The rest of the host filesystem is not mounted.
 - `cap_drop: ALL` and `no-new-privileges` prevent privilege escalation, so the agent cannot break out of the container.
 - Destructive commands like `rm -rf /` only affect the container's ephemeral filesystem, not the host.
+- A fresh worktree contains no `.env` file (`.env` is gitignored and never committed). IBKR credentials are therefore not present in `/workspace` during normal agentic use.
 
 ### Editing with Cursor GUI
 
@@ -131,7 +132,7 @@ Cursor GUI does not run inside the container. Two options:
 - Keep container mounts limited to the ticket worktree.
 - For parallel ticket work, create one worktree/container pair per ticket.
 - Stop and remove ticket containers when work is complete.
-- **Never place `.env` files with real IBKR credentials inside a ticket worktree.** A worktree created from `origin/main` will not contain one (`.env` is gitignored), and it must stay that way. If the bot needs config values during development, pass them as environment variables from the host shell — they will be forwarded into the container automatically.
+- **Never place `.env` files with real IBKR credentials inside a ticket worktree.** A worktree created from `origin/main` will not contain one (`.env` is gitignored), and it must stay that way. Only `ANTHROPIC_API_KEY` and `CURSOR_API_KEY` are forwarded from the host shell into the container; IBKR credentials (`IBKR_*`) are intentionally not forwarded.
 - Ticket containers enforce `DRYRUN=true` and `IBKR_ENABLE=false` unconditionally (set in `docker-compose.ticket.yml`). Live order placement from a ticket container is not possible even if credentials are present.
 
 ## What NOT to Do
