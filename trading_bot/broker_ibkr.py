@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import math
 import os
+from decimal import Decimal
 from datetime import date, datetime, timezone
 from dataclasses import dataclass
 from typing import Literal, Optional
@@ -50,6 +51,7 @@ class OrderSkipped:
         "missing_price_for_notional_cap",
         "orders_today_unavailable",
         "daily_notional_unavailable",
+        "order_submission_failed",
     ]
 
 
@@ -67,11 +69,7 @@ class IBKRConfig:
     kill_switch: bool = config.IBKR_KILL_SWITCH
     max_orders_per_day: int = config.IBKR_MAX_ORDERS_PER_DAY
     max_position_size: int = config.IBKR_MAX_POSITION_SIZE
-    max_daily_notional: float | None = (
-        float(config.IBKR_MAX_DAILY_NOTIONAL)
-        if config.IBKR_MAX_DAILY_NOTIONAL is not None
-        else None
-    )
+    max_daily_notional: Decimal | None = config.IBKR_MAX_DAILY_NOTIONAL
 
 
 class IBKRClient:
@@ -148,23 +146,27 @@ class IBKRClient:
         symbol: str,
         quantity: int,
         action: Literal["BUY", "SELL"],
-    ):
-        """Place a market order and return the ib_insync Trade object."""
+    ) -> object | None:
+        """Place a market order and return Trade, or None when placement fails."""
         if quantity <= 0:
             raise ValueError("Quantity must be positive for a market order.")
 
         contract = self._build_stock_contract(symbol)
         order = MarketOrder(action, quantity)
         logger.info("Placing %s market order: %d x %s", action, quantity, symbol)
-        trade = self.ib.placeOrder(contract, order)
-        # Give IBKR a small moment to process the order so status is populated.
-        self.ib.sleep(0.5)
-        logger.info(
-            "Order placed: id=%s status=%s",
-            trade.order.orderId,
-            trade.orderStatus.status,
-        )
-        return trade
+        try:
+            trade = self.ib.placeOrder(contract, order)
+            # Give IBKR a small moment to process the order so status is populated.
+            self.ib.sleep(0.5)
+            logger.info(
+                "Order placed: id=%s status=%s",
+                trade.order.orderId,
+                trade.orderStatus.status,
+            )
+            return trade
+        except Exception:
+            logger.error("Failed placing %s market order for %s", action, symbol, exc_info=True)
+            return None
 
     def get_today_order_count(self) -> int | None:
         """Return number of orders submitted today, or None if IBKR query fails."""
@@ -188,17 +190,17 @@ class IBKRClient:
             logger.error("Failed to fetch today's order count from IBKR", exc_info=True)
             return None
 
-    def get_today_filled_notional(self) -> float | None:
+    def get_today_filled_notional(self) -> Decimal | None:
         """Return today's filled notional in account currency, or None if unavailable."""
         try:
             today_utc = datetime.now(timezone.utc).date()
-            total = 0.0
+            total = Decimal("0")
             for fill in self.ib.fills():
                 exec_time = getattr(fill.execution, "time", None)
                 if _to_utc_date(exec_time) != today_utc:
                     continue
-                shares = abs(float(getattr(fill.execution, "shares", 0.0)))
-                price = float(getattr(fill.execution, "price", 0.0))
+                shares = Decimal(str(abs(float(getattr(fill.execution, "shares", 0.0)))))
+                price = Decimal(str(getattr(fill.execution, "price", 0.0)))
                 total += shares * price
             return total
         except Exception:
@@ -211,7 +213,7 @@ def execute_signal_as_market_order(
     *,
     ib_symbol: str,
     quantity: int,
-    reference_price: float | None = None,
+    reference_price: Decimal | float | None = None,
     cfg: Optional[IBKRConfig] = None,
 ):
     """
@@ -292,13 +294,32 @@ def execute_signal_as_market_order(
             logger.warning("Skipping SELL: no position in %s", ib_symbol)
             return OrderSkipped(signal=signal, ib_symbol=ib_symbol, reason="already_flat")
         if cfg.max_daily_notional is not None:
-            if reference_price is None or math.isnan(reference_price):
+            price_for_notional: Decimal
+            if reference_price is None:
                 logger.error(
                     "Skipping %s for %s: max daily notional is configured but no reference price was provided",
                     action,
                     ib_symbol,
                 )
                 return OrderSkipped(signal=signal, ib_symbol=ib_symbol, reason="missing_price_for_notional_cap")
+            if isinstance(reference_price, Decimal):
+                if reference_price.is_nan():
+                    logger.error(
+                        "Skipping %s for %s: max daily notional is configured but no reference price was provided",
+                        action,
+                        ib_symbol,
+                    )
+                    return OrderSkipped(signal=signal, ib_symbol=ib_symbol, reason="missing_price_for_notional_cap")
+                price_for_notional = reference_price
+            else:
+                if math.isnan(reference_price):
+                    logger.error(
+                        "Skipping %s for %s: max daily notional is configured but no reference price was provided",
+                        action,
+                        ib_symbol,
+                    )
+                    return OrderSkipped(signal=signal, ib_symbol=ib_symbol, reason="missing_price_for_notional_cap")
+                price_for_notional = Decimal(str(reference_price))
             today_notional = client.get_today_filled_notional()
             if today_notional is None:
                 logger.error(
@@ -307,14 +328,14 @@ def execute_signal_as_market_order(
                     ib_symbol,
                 )
                 return OrderSkipped(signal=signal, ib_symbol=ib_symbol, reason="daily_notional_unavailable")
-            projected_notional = today_notional + float(quantity) * reference_price
+            projected_notional = today_notional + Decimal(quantity) * price_for_notional
             if projected_notional > cfg.max_daily_notional:
                 logger.warning(
                     "Skipping %s for %s: max daily notional exceeded (projected=%.2f > limit=%.2f)",
                     action,
                     ib_symbol,
-                    projected_notional,
-                    cfg.max_daily_notional,
+                    float(projected_notional),
+                    float(cfg.max_daily_notional),
                 )
                 return OrderSkipped(signal=signal, ib_symbol=ib_symbol, reason="max_daily_notional_exceeded")
         trade = client.place_market_order(
@@ -322,4 +343,7 @@ def execute_signal_as_market_order(
             quantity=quantity,
             action=action,
         )
+        if trade is None:
+            logger.error("Skipping %s for %s: order submission failed", action, ib_symbol)
+            return OrderSkipped(signal=signal, ib_symbol=ib_symbol, reason="order_submission_failed")
     return trade

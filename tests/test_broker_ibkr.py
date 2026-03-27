@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -86,7 +87,7 @@ def _patched_client(
     current_pos: int,
     *,
     orders_today: int | None = 0,
-    daily_notional: float | None = 0.0,
+    daily_notional: Decimal | None = Decimal("0"),
 ):
     """Return a context-manager mock for IBKRClient that reports *current_pos*."""
     mock_client = MagicMock(spec=IBKRClient)
@@ -212,8 +213,8 @@ class TestExecuteSignalPositionCheck:
     def test_max_daily_notional_blocks_order(self, monkeypatch):
         monkeypatch.setenv("DRYRUN", "false")
         cfg = _make_cfg()
-        cfg.max_daily_notional = 500.0
-        ctx, mock_client = _patched_client(current_pos=0, daily_notional=450.0)
+        cfg.max_daily_notional = Decimal("500")
+        ctx, mock_client = _patched_client(current_pos=0, daily_notional=Decimal("450"))
         with patch("trading_bot.broker_ibkr.IBKRClient", ctx):
             result = execute_signal_as_market_order(
                 "BUY",
@@ -229,8 +230,8 @@ class TestExecuteSignalPositionCheck:
     def test_missing_reference_price_blocks_notional_guardrail(self, monkeypatch):
         monkeypatch.setenv("DRYRUN", "false")
         cfg = _make_cfg()
-        cfg.max_daily_notional = 500.0
-        ctx, mock_client = _patched_client(current_pos=0, daily_notional=100.0)
+        cfg.max_daily_notional = Decimal("500")
+        ctx, mock_client = _patched_client(current_pos=0, daily_notional=Decimal("100"))
         with patch("trading_bot.broker_ibkr.IBKRClient", ctx):
             result = execute_signal_as_market_order("BUY", ib_symbol="VWCE", quantity=1, cfg=cfg)
         assert isinstance(result, OrderSkipped)
@@ -240,7 +241,7 @@ class TestExecuteSignalPositionCheck:
     def test_daily_notional_unavailable_blocks_order(self, monkeypatch):
         monkeypatch.setenv("DRYRUN", "false")
         cfg = _make_cfg()
-        cfg.max_daily_notional = 500.0
+        cfg.max_daily_notional = Decimal("500")
         ctx, mock_client = _patched_client(current_pos=0, daily_notional=None)
         with patch("trading_bot.broker_ibkr.IBKRClient", ctx):
             result = execute_signal_as_market_order(
@@ -257,8 +258,8 @@ class TestExecuteSignalPositionCheck:
     def test_nan_reference_price_blocks_notional_guardrail(self, monkeypatch):
         monkeypatch.setenv("DRYRUN", "false")
         cfg = _make_cfg()
-        cfg.max_daily_notional = 500.0
-        ctx, mock_client = _patched_client(current_pos=0, daily_notional=100.0)
+        cfg.max_daily_notional = Decimal("500")
+        ctx, mock_client = _patched_client(current_pos=0, daily_notional=Decimal("100"))
         with patch("trading_bot.broker_ibkr.IBKRClient", ctx):
             result = execute_signal_as_market_order(
                 "BUY",
@@ -270,3 +271,12 @@ class TestExecuteSignalPositionCheck:
         assert isinstance(result, OrderSkipped)
         assert result.reason == "missing_price_for_notional_cap"
         mock_client.place_market_order.assert_not_called()
+
+    def test_order_submission_failure_returns_skipped_reason(self, monkeypatch):
+        monkeypatch.setenv("DRYRUN", "false")
+        ctx, mock_client = _patched_client(current_pos=0)
+        mock_client.place_market_order.return_value = None
+        with patch("trading_bot.broker_ibkr.IBKRClient", ctx):
+            result = execute_signal_as_market_order("BUY", ib_symbol="VWCE", quantity=1, cfg=_make_cfg())
+        assert isinstance(result, OrderSkipped)
+        assert result.reason == "order_submission_failed"
