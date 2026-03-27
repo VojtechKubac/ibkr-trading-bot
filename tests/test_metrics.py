@@ -46,9 +46,9 @@ def test_trade_and_exposure_metrics_are_computed():
 
 def test_sharpe_is_none_when_volatility_is_zero():
     idx = pd.date_range("2020-01-01", periods=5, freq="D")
-    equity = pd.Series([100.0, 101.0, 102.0, 103.0, 104.0], index=idx)
+    # Constant equity -> returns are exactly zero -> volatility is zero.
+    equity = pd.Series([100.0, 100.0, 100.0, 100.0, 100.0], index=idx)
     report = build_performance_report(equity_curve=equity, trades=pd.DataFrame(), position_curve=None)
 
-    # monotonic equal-step equity produces near-constant returns -> std can be 0 in floating math
-    if report.annualized_volatility == 0.0:
-        assert report.sharpe is None
+    assert report.annualized_volatility == 0.0
+    assert report.sharpe is None

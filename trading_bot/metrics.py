@@ -23,6 +23,7 @@ class PerformanceReport:
 
 
 def _years_between(index: pd.Index) -> float | None:
+    """Return fractional years between first and last timestamps, or None if invalid."""
     if len(index) < 2:
         return None
     if not isinstance(index, pd.DatetimeIndex):
@@ -156,6 +157,7 @@ def build_performance_report(
     else:
         avg_win_val = avg_win or 0.0
         avg_loss_val = avg_loss or 0.0
+        # avg_loss is negative; this computes expected value (EV) per trade.
         expectancy = win_rate * avg_win_val + (1.0 - win_rate) * avg_loss_val
 
     turnover: float | None = None

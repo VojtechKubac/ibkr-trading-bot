@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import math
+from dataclasses import asdict
 from datetime import date
 from pathlib import Path
 
@@ -183,19 +185,12 @@ def main() -> None:
         print()
         if args.backtest_report_json:
             out_path = Path(args.backtest_report_json)
-            payload = {
-                "cagr": report.cagr,
-                "annualized_volatility": report.annualized_volatility,
-                "sharpe": report.sharpe,
-                "win_rate": report.win_rate,
-                "avg_win": report.avg_win,
-                "avg_loss": report.avg_loss,
-                "expectancy": report.expectancy,
-                "turnover": report.turnover,
-                "exposure": report.exposure,
-                "trade_round_trips": report.trade_round_trips,
-            }
-            out_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            try:
+                out_path.parent.mkdir(parents=True, exist_ok=True)
+                out_path.write_text(json.dumps(asdict(report), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            except OSError as exc:
+                logging.getLogger(__name__).error("Failed to write backtest report: %s", exc)
+                raise SystemExit(1) from exc
         if not result.trades.empty:
             print("First 5 trades:")
             print(result.trades.head())
