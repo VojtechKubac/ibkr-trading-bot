@@ -181,6 +181,7 @@ def main() -> None:
                 sig,
                 ib_symbol=ib_symbol,
                 quantity=args.ibkr_size,
+                reference_price=float(price),
                 cfg=cfg,
             )
         except Exception as exc:  # pragma: no cover - runtime integration errors

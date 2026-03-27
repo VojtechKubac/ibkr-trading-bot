@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -13,7 +14,17 @@ from trading_bot.broker_ibkr import (
 
 
 def _make_cfg() -> IBKRConfig:
-    return IBKRConfig(host="127.0.0.1", port=7497, client_id=1)
+    """Return a deterministic IBKRConfig for broker unit tests."""
+    return IBKRConfig(
+        host="127.0.0.1",
+        port=7497,
+        client_id=1,
+        ibkr_enable=True,
+        kill_switch=False,
+        max_orders_per_day=5,
+        max_position_size=1_000_000,
+        max_daily_notional=None,
+    )
 
 
 def _make_position(symbol: str, shares: float) -> SimpleNamespace:
@@ -73,9 +84,16 @@ class TestGetCurrentPosition:
 # ---------------------------------------------------------------------------
 
 
-def _patched_client(current_pos: int):
+def _patched_client(
+    current_pos: int,
+    *,
+    orders_today: int | None = 0,
+    daily_notional: Decimal | None = Decimal("0"),
+):
     """Return a context-manager mock for IBKRClient that reports *current_pos*."""
     mock_client = MagicMock(spec=IBKRClient)
+    mock_client.get_today_order_count.return_value = orders_today
+    mock_client.get_today_filled_notional.return_value = daily_notional
     mock_client.get_current_position.return_value = current_pos
     mock_client.__enter__ = MagicMock(return_value=mock_client)
     mock_client.__exit__ = MagicMock(return_value=False)
@@ -142,3 +160,168 @@ class TestExecuteSignalPositionCheck:
             result = execute_signal_as_market_order("BUY", ib_symbol="VWCE", quantity=1, cfg=_make_cfg())
         assert isinstance(result, DryRunSkipped)
         ctx.assert_not_called()
+
+    def test_ibkr_enable_false_takes_precedence_over_position_check(self, monkeypatch):
+        monkeypatch.setenv("DRYRUN", "false")
+        cfg = _make_cfg()
+        cfg.ibkr_enable = False
+        ctx, _mock_client = _patched_client(current_pos=99)
+        with patch("trading_bot.broker_ibkr.IBKRClient", ctx):
+            result = execute_signal_as_market_order("BUY", ib_symbol="VWCE", quantity=1, cfg=cfg)
+        assert isinstance(result, DryRunSkipped)
+        ctx.assert_not_called()
+
+    def test_kill_switch_blocks_before_client_connect(self, monkeypatch, caplog):
+        import logging
+
+        monkeypatch.setenv("DRYRUN", "false")
+        cfg = _make_cfg()
+        cfg.kill_switch = True
+        ctx, _mock_client = _patched_client(current_pos=0)
+        with caplog.at_level(logging.ERROR):
+            with patch("trading_bot.broker_ibkr.IBKRClient", ctx):
+                result = execute_signal_as_market_order("BUY", ib_symbol="VWCE", quantity=1, cfg=cfg)
+        assert isinstance(result, OrderSkipped)
+        assert result.reason == "kill_switch_enabled"
+        assert "Kill switch enabled" in caplog.text
+        ctx.assert_not_called()
+
+    def test_max_orders_per_day_blocks_order(self, monkeypatch, caplog):
+        import logging
+
+        monkeypatch.setenv("DRYRUN", "false")
+        cfg = _make_cfg()
+        cfg.max_orders_per_day = 1
+        ctx, mock_client = _patched_client(current_pos=0, orders_today=1)
+        with caplog.at_level(logging.WARNING):
+            with patch("trading_bot.broker_ibkr.IBKRClient", ctx):
+                result = execute_signal_as_market_order("BUY", ib_symbol="VWCE", quantity=1, cfg=cfg)
+        assert isinstance(result, OrderSkipped)
+        assert result.reason == "max_orders_per_day_reached"
+        assert "max orders/day reached" in caplog.text
+        mock_client.place_market_order.assert_not_called()
+
+    def test_orders_per_day_unavailable_blocks_order(self, monkeypatch):
+        monkeypatch.setenv("DRYRUN", "false")
+        ctx, mock_client = _patched_client(current_pos=0, orders_today=None)
+        with patch("trading_bot.broker_ibkr.IBKRClient", ctx):
+            result = execute_signal_as_market_order("BUY", ib_symbol="VWCE", quantity=1, cfg=_make_cfg())
+        assert isinstance(result, OrderSkipped)
+        assert result.reason == "orders_today_unavailable"
+        mock_client.place_market_order.assert_not_called()
+
+    def test_max_position_size_blocks_buy(self, monkeypatch):
+        monkeypatch.setenv("DRYRUN", "false")
+        cfg = _make_cfg()
+        cfg.max_position_size = 10
+        ctx, mock_client = _patched_client(current_pos=10)
+        with patch("trading_bot.broker_ibkr.IBKRClient", ctx):
+            result = execute_signal_as_market_order("BUY", ib_symbol="VWCE", quantity=1, cfg=cfg)
+        assert isinstance(result, OrderSkipped)
+        assert result.reason == "max_position_size_exceeded"
+        mock_client.place_market_order.assert_not_called()
+
+    def test_max_daily_notional_blocks_order(self, monkeypatch):
+        monkeypatch.setenv("DRYRUN", "false")
+        cfg = _make_cfg()
+        cfg.max_daily_notional = Decimal("500")
+        ctx, mock_client = _patched_client(current_pos=0, daily_notional=Decimal("450"))
+        with patch("trading_bot.broker_ibkr.IBKRClient", ctx):
+            result = execute_signal_as_market_order(
+                "BUY",
+                ib_symbol="VWCE",
+                quantity=1,
+                reference_price=100.0,
+                cfg=cfg,
+            )
+        assert isinstance(result, OrderSkipped)
+        assert result.reason == "max_daily_notional_exceeded"
+        mock_client.place_market_order.assert_not_called()
+
+    def test_missing_reference_price_blocks_notional_guardrail(self, monkeypatch):
+        monkeypatch.setenv("DRYRUN", "false")
+        cfg = _make_cfg()
+        cfg.max_daily_notional = Decimal("500")
+        ctx, mock_client = _patched_client(current_pos=0, daily_notional=Decimal("100"))
+        with patch("trading_bot.broker_ibkr.IBKRClient", ctx):
+            result = execute_signal_as_market_order("BUY", ib_symbol="VWCE", quantity=1, cfg=cfg)
+        assert isinstance(result, OrderSkipped)
+        assert result.reason == "missing_price_for_notional_cap"
+        mock_client.place_market_order.assert_not_called()
+
+    def test_daily_notional_unavailable_blocks_order(self, monkeypatch):
+        monkeypatch.setenv("DRYRUN", "false")
+        cfg = _make_cfg()
+        cfg.max_daily_notional = Decimal("500")
+        ctx, mock_client = _patched_client(current_pos=0, daily_notional=None)
+        with patch("trading_bot.broker_ibkr.IBKRClient", ctx):
+            result = execute_signal_as_market_order(
+                "BUY",
+                ib_symbol="VWCE",
+                quantity=1,
+                reference_price=100.0,
+                cfg=cfg,
+            )
+        assert isinstance(result, OrderSkipped)
+        assert result.reason == "daily_notional_unavailable"
+        mock_client.place_market_order.assert_not_called()
+
+    def test_nan_reference_price_blocks_notional_guardrail(self, monkeypatch):
+        monkeypatch.setenv("DRYRUN", "false")
+        cfg = _make_cfg()
+        cfg.max_daily_notional = Decimal("500")
+        ctx, mock_client = _patched_client(current_pos=0, daily_notional=Decimal("100"))
+        with patch("trading_bot.broker_ibkr.IBKRClient", ctx):
+            result = execute_signal_as_market_order(
+                "BUY",
+                ib_symbol="VWCE",
+                quantity=1,
+                reference_price=float("nan"),
+                cfg=cfg,
+            )
+        assert isinstance(result, OrderSkipped)
+        assert result.reason == "invalid_reference_price"
+        mock_client.place_market_order.assert_not_called()
+
+    def test_non_positive_reference_price_blocks_notional_guardrail(self, monkeypatch):
+        monkeypatch.setenv("DRYRUN", "false")
+        cfg = _make_cfg()
+        cfg.max_daily_notional = Decimal("500")
+        ctx, mock_client = _patched_client(current_pos=0, daily_notional=Decimal("100"))
+        with patch("trading_bot.broker_ibkr.IBKRClient", ctx):
+            result = execute_signal_as_market_order(
+                "BUY",
+                ib_symbol="VWCE",
+                quantity=1,
+                reference_price=0.0,
+                cfg=cfg,
+            )
+        assert isinstance(result, OrderSkipped)
+        assert result.reason == "invalid_reference_price"
+        mock_client.place_market_order.assert_not_called()
+
+    def test_infinite_reference_price_blocks_notional_guardrail(self, monkeypatch):
+        monkeypatch.setenv("DRYRUN", "false")
+        cfg = _make_cfg()
+        cfg.max_daily_notional = Decimal("500")
+        ctx, mock_client = _patched_client(current_pos=0, daily_notional=Decimal("100"))
+        with patch("trading_bot.broker_ibkr.IBKRClient", ctx):
+            result = execute_signal_as_market_order(
+                "BUY",
+                ib_symbol="VWCE",
+                quantity=1,
+                reference_price=float("inf"),
+                cfg=cfg,
+            )
+        assert isinstance(result, OrderSkipped)
+        assert result.reason == "invalid_reference_price"
+        mock_client.place_market_order.assert_not_called()
+
+    def test_order_submission_failure_returns_skipped_reason(self, monkeypatch):
+        monkeypatch.setenv("DRYRUN", "false")
+        ctx, mock_client = _patched_client(current_pos=0)
+        mock_client.place_market_order.return_value = None
+        with patch("trading_bot.broker_ibkr.IBKRClient", ctx):
+            result = execute_signal_as_market_order("BUY", ib_symbol="VWCE", quantity=1, cfg=_make_cfg())
+        assert isinstance(result, OrderSkipped)
+        assert result.reason == "order_submission_failed"

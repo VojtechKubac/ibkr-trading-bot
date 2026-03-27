@@ -177,6 +177,7 @@ def run_symbol(symbol_key: str, conn: sqlite3.Connection) -> None:
             signal,  # type: ignore[arg-type]
             ib_symbol=asset.ib_symbol,
             quantity=quantity,
+            reference_price=current_price,
             cfg=IBKRConfig(),
         )
     except Exception:
