@@ -82,6 +82,15 @@ Before making any implementation change, coding agents must verify the environme
 3. Ensure the ticket container is running (or start it).
 4. Use the matching ticket worktree/container pair for this ticket.
 
+Use deterministic checks where possible:
+
+```bash
+pwd
+test -f .ticket-env
+set -a; source .ticket-env; set +a
+docker compose -f docker-compose.ticket.yml ps
+```
+
 If the current environment is not a ticket worktree/container pair, agents must stop and prompt to bootstrap one first (using `./scripts/start-ticket-workflow.sh`), unless the user explicitly requests a quick/manual update from the main clone.
 
 ### Ticket Environment Bootstrap
