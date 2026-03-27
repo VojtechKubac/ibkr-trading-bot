@@ -13,6 +13,7 @@ from trading_bot.broker_ibkr import (
 
 
 def _make_cfg() -> IBKRConfig:
+    """Return a deterministic IBKRConfig for broker unit tests."""
     return IBKRConfig(
         host="127.0.0.1",
         port=7497,
@@ -251,4 +252,21 @@ class TestExecuteSignalPositionCheck:
             )
         assert isinstance(result, OrderSkipped)
         assert result.reason == "daily_notional_unavailable"
+        mock_client.place_market_order.assert_not_called()
+
+    def test_nan_reference_price_blocks_notional_guardrail(self, monkeypatch):
+        monkeypatch.setenv("DRYRUN", "false")
+        cfg = _make_cfg()
+        cfg.max_daily_notional = 500.0
+        ctx, mock_client = _patched_client(current_pos=0, daily_notional=100.0)
+        with patch("trading_bot.broker_ibkr.IBKRClient", ctx):
+            result = execute_signal_as_market_order(
+                "BUY",
+                ib_symbol="VWCE",
+                quantity=1,
+                reference_price=float("nan"),
+                cfg=cfg,
+            )
+        assert isinstance(result, OrderSkipped)
+        assert result.reason == "missing_price_for_notional_cap"
         mock_client.place_market_order.assert_not_called()

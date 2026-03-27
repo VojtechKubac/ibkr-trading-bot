@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import logging
+import math
 import os
-from datetime import date
+from datetime import date, datetime, timezone
 from dataclasses import dataclass
 from typing import Literal, Optional
 
@@ -13,6 +14,15 @@ from trading_bot import config
 logger = logging.getLogger(__name__)
 
 Signal = Literal["BUY", "SELL", "HOLD"]
+
+
+def _to_utc_date(value: object) -> date | None:
+    """Convert a datetime-like value to a UTC date for day-bound guardrails."""
+    if not isinstance(value, datetime):
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc).date()
 
 
 @dataclass
@@ -159,7 +169,7 @@ class IBKRClient:
     def get_today_order_count(self) -> int | None:
         """Return number of orders submitted today, or None if IBKR query fails."""
         try:
-            today = date.today()
+            today_utc = datetime.now(timezone.utc).date()
             count = 0
             for trade in self.ib.trades():
                 status = getattr(getattr(trade, "orderStatus", None), "status", None)
@@ -171,7 +181,7 @@ class IBKRClient:
                 last_time = getattr(log_entries[-1], "time", None)
                 if last_time is None:
                     continue
-                if getattr(last_time, "date", lambda: None)() == today:
+                if _to_utc_date(last_time) == today_utc:
                     count += 1
             return count
         except Exception:
@@ -181,11 +191,11 @@ class IBKRClient:
     def get_today_filled_notional(self) -> float | None:
         """Return today's filled notional in account currency, or None if unavailable."""
         try:
-            today = date.today()
+            today_utc = datetime.now(timezone.utc).date()
             total = 0.0
             for fill in self.ib.fills():
                 exec_time = getattr(fill.execution, "time", None)
-                if exec_time is None or getattr(exec_time, "date", lambda: None)() != today:
+                if _to_utc_date(exec_time) != today_utc:
                     continue
                 shares = abs(float(getattr(fill.execution, "shares", 0.0)))
                 price = float(getattr(fill.execution, "price", 0.0))
@@ -282,7 +292,7 @@ def execute_signal_as_market_order(
             logger.warning("Skipping SELL: no position in %s", ib_symbol)
             return OrderSkipped(signal=signal, ib_symbol=ib_symbol, reason="already_flat")
         if cfg.max_daily_notional is not None:
-            if reference_price is None:
+            if reference_price is None or math.isnan(reference_price):
                 logger.error(
                     "Skipping %s for %s: max daily notional is configured but no reference price was provided",
                     action,
