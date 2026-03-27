@@ -13,16 +13,17 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends git bash ca-certificates curl \
     && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
+    && ln -sf /usr/bin/node /usr/local/bin/node \
     && rm -rf /var/lib/apt/lists/*
 
 # Claude Code CLI
 RUN npm install -g @anthropic-ai/claude-code
 
-# Cursor agent CLI — installs to /root/.local/bin; copy to /usr/local/bin for all users
+# Cursor agent CLI — expose binary for all users
 RUN curl -fsSL https://cursor.com/install | bash \
-    && cp -L /root/.local/bin/cursor-agent /usr/local/bin/cursor-agent \
-    && chmod +x /usr/local/bin/cursor-agent \
-    && rm -rf /root/.local
+    && ln -sf /root/.local/bin/cursor-agent /usr/local/bin/cursor-agent \
+    && chmod 755 /root /root/.local /root/.local/bin \
+    && chmod -R a+rx /root/.local/share/cursor-agent
 
 RUN groupadd --gid "${USER_GID}" "${USERNAME}" \
     && useradd --uid "${USER_UID}" --gid "${USER_GID}" --create-home --shell /bin/bash "${USERNAME}"

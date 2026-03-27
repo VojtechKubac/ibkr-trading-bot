@@ -66,25 +66,48 @@ DRYRUN=true python runweekly.py                      # coming soon
 
 - One Linear ticket = one PR.
 - One Linear ticket = one dedicated git worktree + one branch + one Docker container.
+- For agentic implementation, this workflow is the default and should be used unless explicitly overridden.
 - **Always branch from `main`**, never from another feature branch.
 - Branch naming: `kua-{number}-short-description` (e.g. `kua-19-agent-docs`).
 - All CodeRabbit review comments must be resolved before requesting human review.
 - **When working on an open PR, always check for merge conflicts first** (`git fetch origin main && git merge origin/main`). Resolve any conflicts before making further changes or pushing.
 - Do not merge your own PRs.
 
+### Required Agent Preflight (before coding)
+
+Before making any implementation change, coding agents must verify the environment:
+
+1. Verify current path is a ticket worktree under `../worktrees/kua-*`.
+2. Check that `.ticket-env` exists in the current worktree.
+3. Ensure the ticket container is running (or start it).
+4. Use the matching ticket worktree/container pair for this ticket.
+
+Use deterministic checks where possible:
+
+```bash
+pwd
+test -f .ticket-env
+set -a; source .ticket-env; set +a
+docker compose -f docker-compose.ticket.yml ps
+```
+
+If the current environment is not a ticket worktree/container pair, agents must stop and prompt to bootstrap one first (using `./scripts/start-ticket-workflow.sh`), unless the user explicitly requests a quick/manual update from the main clone.
+
 ### Ticket Environment Bootstrap
 
 Use the helper script from the main repository checkout:
 
 ```bash
-./scripts/new-ticket-env.sh kua-123 short-description
+./scripts/start-ticket-workflow.sh kua-123 short-description
 ```
 
-This creates a new worktree under `../worktrees/` from `origin/main` and writes a `.ticket-env` file with container/runtime variables.
+This creates a new worktree under `../worktrees/` from `origin/main`, writes a `.ticket-env` file with container/runtime variables, and starts the ticket container.
 
-Inside the new worktree, start the ticket container:
+If you need manual steps instead of the helper:
 
 ```bash
+./scripts/new-ticket-env.sh kua-123 short-description
+cd ../worktrees/kua-123-short-description
 set -a; source .ticket-env; set +a
 docker compose -f docker-compose.ticket.yml up -d --build
 docker compose -f docker-compose.ticket.yml exec ticket-dev bash
@@ -132,8 +155,12 @@ Cursor GUI does not run inside the container. Two options:
 - Keep container mounts limited to the ticket worktree.
 - For parallel ticket work, create one worktree/container pair per ticket.
 - Stop and remove ticket containers when work is complete.
+- If a user explicitly requests a quick/manual update from the main clone, that is allowed; note this choice in the PR description using the PR template fields.
+- After opening a PR, agents must monitor CodeRabbit feedback, wait for review availability when delayed, and address all comments (including nitpicks) before requesting human review.
+- CodeRabbit is considered done when both conditions are true: (1) all discussions/comments are resolved, and (2) PR checks show no in-progress CodeRabbit run.
 - **Never place `.env` files with real IBKR credentials inside a ticket worktree.** A worktree created from `origin/main` will not contain one (`.env` is gitignored), and it must stay that way. Only `ANTHROPIC_API_KEY` and `CURSOR_API_KEY` are forwarded from the host shell into the container; IBKR credentials (`IBKR_*`) are intentionally not forwarded.
 - Ticket containers enforce `DRYRUN=true` and `IBKR_ENABLE=false` unconditionally (set in `docker-compose.ticket.yml`). Live order placement from a ticket container is not possible even if credentials are present.
+- CI is intentionally non-blocking for environment choice; enforcement happens early via agent preflight and review visibility.
 
 ## What NOT to Do
 
