@@ -18,6 +18,7 @@ build/
 # Environment variables
 .env
 .env.*
+.ticket-env
 !.env.example
 
 # IDE
