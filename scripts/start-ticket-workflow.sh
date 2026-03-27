@@ -30,7 +30,10 @@ PARENT_DIR="$(dirname "${MAIN_CHECKOUT_DIR}")"
 WORKTREE_DIR="${PARENT_DIR}/worktrees/${BRANCH_NAME}"
 
 if [[ ! -d "${WORKTREE_DIR}" ]]; then
-  "${SCRIPT_DIR}/new-ticket-env.sh" "${TICKET_ID}" "${SLUG}"
+  if ! "${SCRIPT_DIR}/new-ticket-env.sh" "${TICKET_ID}" "${SLUG}"; then
+    echo "Error: failed to create ticket environment for ${TICKET_ID}-${SLUG}" >&2
+    exit 1
+  fi
 fi
 
 cd "${WORKTREE_DIR}"

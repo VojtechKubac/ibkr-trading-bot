@@ -82,7 +82,7 @@ Before making any implementation change, coding agents must verify the environme
 3. Confirm the ticket container is running (or start it).
 4. Confirm execution context uses the ticket worktree/container pair for this ticket.
 
-If the current environment is not a ticket worktree/container pair, agents must stop and prompt to bootstrap one first (using `./scripts/new-ticket-env.sh`), unless the user explicitly requests a quick/manual update from the main clone.
+If the current environment is not a ticket worktree/container pair, agents must stop and prompt to bootstrap one first (using `./scripts/start-ticket-workflow.sh`), unless the user explicitly requests a quick/manual update from the main clone.
 
 ### Ticket Environment Bootstrap
 
@@ -145,6 +145,7 @@ Cursor GUI does not run inside the container. Two options:
 - For parallel ticket work, create one worktree/container pair per ticket.
 - Stop and remove ticket containers when work is complete.
 - If a user explicitly requests a quick/manual update from the main clone, that is allowed; note this choice in the PR description using the PR template fields.
+- After opening a PR, agents must monitor CodeRabbit feedback, wait for review availability when delayed, and address all comments (including nitpicks) before requesting human review.
 - **Never place `.env` files with real IBKR credentials inside a ticket worktree.** A worktree created from `origin/main` will not contain one (`.env` is gitignored), and it must stay that way. Only `ANTHROPIC_API_KEY` and `CURSOR_API_KEY` are forwarded from the host shell into the container; IBKR credentials (`IBKR_*`) are intentionally not forwarded.
 - Ticket containers enforce `DRYRUN=true` and `IBKR_ENABLE=false` unconditionally (set in `docker-compose.ticket.yml`). Live order placement from a ticket container is not possible even if credentials are present.
 - CI is intentionally non-blocking for environment choice; enforcement happens early via agent preflight and review visibility.
