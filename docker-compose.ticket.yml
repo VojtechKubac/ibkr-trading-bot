@@ -1,0 +1,29 @@
+services:
+  ticket-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      args:
+        USER_UID: ${HOST_UID:-1000}
+        USER_GID: ${HOST_GID:-1000}
+    image: trading-ticket-dev:latest
+    container_name: ${TICKET_CONTAINER_NAME:?Load .ticket-env first (set -a; source .ticket-env; set +a)}
+    working_dir: /workspace
+    stdin_open: true
+    tty: true
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DRYRUN=true          # hardcoded: ticket containers never place live orders
+      - IBKR_ENABLE=false    # hardcoded: IBKR execution disabled in ticket containers
+      - ANTHROPIC_API_KEY    # passed through from host shell if set
+      - CURSOR_API_KEY       # passed through from host shell if set
+    volumes:
+      - ./:/workspace
+      - pip-cache:/home/agent/.cache/pip
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  pip-cache:

@@ -65,11 +65,75 @@ DRYRUN=true python runweekly.py                      # coming soon
 ## Workflow
 
 - One Linear ticket = one PR.
+- One Linear ticket = one dedicated git worktree + one branch + one Docker container.
 - **Always branch from `main`**, never from another feature branch.
 - Branch naming: `kua-{number}-short-description` (e.g. `kua-19-agent-docs`).
 - All CodeRabbit review comments must be resolved before requesting human review.
 - **When working on an open PR, always check for merge conflicts first** (`git fetch origin main && git merge origin/main`). Resolve any conflicts before making further changes or pushing.
 - Do not merge your own PRs.
+
+### Ticket Environment Bootstrap
+
+Use the helper script from the main repository checkout:
+
+```bash
+./scripts/new-ticket-env.sh kua-123 short-description
+```
+
+This creates a new worktree under `../worktrees/` from `origin/main` and writes a `.ticket-env` file with container/runtime variables.
+
+Inside the new worktree, start the ticket container:
+
+```bash
+set -a; source .ticket-env; set +a
+docker compose -f docker-compose.ticket.yml up -d --build
+docker compose -f docker-compose.ticket.yml exec ticket-dev bash
+```
+
+### Running the AI agent inside the container
+
+Both Claude Code and Cursor CLI are installed in the container. Only `ANTHROPIC_API_KEY` and `CURSOR_API_KEY` are forwarded from the host shell; IBKR credentials are intentionally not forwarded (see `docker-compose.ticket.yml`).
+
+**Claude Code:**
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...   # in host shell, before docker compose up
+# inside the container:
+claude --dangerously-skip-permissions
+```
+
+**Cursor agent CLI:**
+
+```bash
+export CURSOR_API_KEY=...             # in host shell, before docker compose up
+# inside the container:
+cursor-agent -p --force --sandbox disabled "implement the ticket"
+```
+
+`-p` = non-interactive/headless, `--force` = apply changes without confirmation, `--sandbox disabled` = allow the agent to run shell commands freely (equivalent to Claude Code's `--dangerously-skip-permissions`).
+
+The container has outbound internet access (needed for API calls and package downloads). The safety guarantee is **host filesystem isolation**, not network isolation:
+
+- The agent can only read/write `/workspace` (the ticket worktree). The rest of the host filesystem is not mounted.
+- `cap_drop: ALL` and `no-new-privileges` prevent privilege escalation, so the agent cannot break out of the container.
+- Destructive commands like `rm -rf /` only affect the container's ephemeral filesystem, not the host.
+- A fresh worktree contains no `.env` file (`.env` is gitignored and never committed). IBKR credentials are therefore not present in `/workspace` during normal agentic use.
+
+### Editing with Cursor GUI
+
+Cursor GUI does not run inside the container. Two options:
+
+- **Direct**: Open the worktree directory (`../worktrees/kua-xxx-yyy/`) in Cursor on the host. The worktree is on the host filesystem, so Cursor sees all changes the container makes immediately.
+- **Remote**: Use [Cursor Remote SSH](https://docs.cursor.com/remote/overview) to connect into the running container.
+
+### Rules for agentic sessions
+
+- Run coding agents from the ticket worktree only, never from another ticket directory.
+- Keep container mounts limited to the ticket worktree.
+- For parallel ticket work, create one worktree/container pair per ticket.
+- Stop and remove ticket containers when work is complete.
+- **Never place `.env` files with real IBKR credentials inside a ticket worktree.** A worktree created from `origin/main` will not contain one (`.env` is gitignored), and it must stay that way. Only `ANTHROPIC_API_KEY` and `CURSOR_API_KEY` are forwarded from the host shell into the container; IBKR credentials (`IBKR_*`) are intentionally not forwarded.
+- Ticket containers enforce `DRYRUN=true` and `IBKR_ENABLE=false` unconditionally (set in `docker-compose.ticket.yml`). Live order placement from a ticket container is not possible even if credentials are present.
 
 ## What NOT to Do
 
