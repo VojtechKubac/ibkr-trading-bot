@@ -49,6 +49,7 @@ class OrderSkipped:
         "max_position_size_exceeded",
         "max_daily_notional_exceeded",
         "missing_price_for_notional_cap",
+        "invalid_reference_price",
         "orders_today_unavailable",
         "daily_notional_unavailable",
         "order_submission_failed",
@@ -66,6 +67,7 @@ class IBKRConfig:
     exchange: str = "SMART"
     currency: str = config.IBKR_CURRENCY
     timeout: int = config.IBKR_TIMEOUT
+    ibkr_enable: bool = config.IBKR_ENABLE
     kill_switch: bool = config.IBKR_KILL_SWITCH
     max_orders_per_day: int = config.IBKR_MAX_ORDERS_PER_DAY
     max_position_size: int = config.IBKR_MAX_POSITION_SIZE
@@ -180,10 +182,15 @@ class IBKRClient:
                 log_entries = list(getattr(trade, "log", []) or [])
                 if not log_entries:
                     continue
-                last_time = getattr(log_entries[-1], "time", None)
-                if last_time is None:
+                submitted_time = (
+                    getattr(trade, "submission_time", None)
+                    or getattr(trade, "submitted_at", None)
+                    or getattr(trade, "created_at", None)
+                    or getattr(log_entries[0], "time", None)
+                )
+                if submitted_time is None:
                     continue
-                if _to_utc_date(last_time) == today_utc:
+                if _to_utc_date(submitted_time) == today_utc:
                     count += 1
             return count
         except Exception:
@@ -199,8 +206,10 @@ class IBKRClient:
                 exec_time = getattr(fill.execution, "time", None)
                 if _to_utc_date(exec_time) != today_utc:
                     continue
-                shares = Decimal(str(abs(float(getattr(fill.execution, "shares", 0.0)))))
-                price = Decimal(str(getattr(fill.execution, "price", 0.0)))
+                raw_shares = getattr(fill.execution, "shares", 0)
+                raw_price = getattr(fill.execution, "price", 0)
+                shares = Decimal(str(raw_shares)).copy_abs()
+                price = Decimal(str(raw_price))
                 total += shares * price
             return total
         except Exception:
@@ -243,7 +252,7 @@ def execute_signal_as_market_order(
     else:
         raise ValueError(f"Unsupported signal {signal!r}")
 
-    if os.environ.get("DRYRUN", "true").lower() != "false":
+    if (not cfg.ibkr_enable) or os.environ.get("DRYRUN", "true").lower() != "false":
         logger.info("DRYRUN mode: skipping %s order for %d x %s", action, quantity, ib_symbol)
         return DryRunSkipped(signal=signal, ib_symbol=ib_symbol, quantity=quantity)
 
@@ -303,22 +312,22 @@ def execute_signal_as_market_order(
                 )
                 return OrderSkipped(signal=signal, ib_symbol=ib_symbol, reason="missing_price_for_notional_cap")
             if isinstance(reference_price, Decimal):
-                if reference_price.is_nan():
+                if (not reference_price.is_finite()) or reference_price <= 0:
                     logger.error(
-                        "Skipping %s for %s: max daily notional is configured but no reference price was provided",
+                        "Skipping %s for %s: invalid reference price for notional guardrail",
                         action,
                         ib_symbol,
                     )
-                    return OrderSkipped(signal=signal, ib_symbol=ib_symbol, reason="missing_price_for_notional_cap")
+                    return OrderSkipped(signal=signal, ib_symbol=ib_symbol, reason="invalid_reference_price")
                 price_for_notional = reference_price
             else:
-                if math.isnan(reference_price):
+                if (not math.isfinite(reference_price)) or reference_price <= 0:
                     logger.error(
-                        "Skipping %s for %s: max daily notional is configured but no reference price was provided",
+                        "Skipping %s for %s: invalid reference price for notional guardrail",
                         action,
                         ib_symbol,
                     )
-                    return OrderSkipped(signal=signal, ib_symbol=ib_symbol, reason="missing_price_for_notional_cap")
+                    return OrderSkipped(signal=signal, ib_symbol=ib_symbol, reason="invalid_reference_price")
                 price_for_notional = Decimal(str(reference_price))
             today_notional = client.get_today_filled_notional()
             if today_notional is None:
