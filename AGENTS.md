@@ -77,10 +77,10 @@ DRYRUN=true python runweekly.py                      # coming soon
 
 Before making any implementation change, coding agents must verify the environment:
 
-1. Confirm current path is a ticket worktree under `../worktrees/kua-*`.
-2. Confirm `.ticket-env` exists in the current worktree.
-3. Confirm the ticket container is running (or start it).
-4. Confirm execution context uses the ticket worktree/container pair for this ticket.
+1. Verify current path is a ticket worktree under `../worktrees/kua-*`.
+2. Check that `.ticket-env` exists in the current worktree.
+3. Ensure the ticket container is running (or start it).
+4. Use the matching ticket worktree/container pair for this ticket.
 
 If the current environment is not a ticket worktree/container pair, agents must stop and prompt to bootstrap one first (using `./scripts/start-ticket-workflow.sh`), unless the user explicitly requests a quick/manual update from the main clone.
 
@@ -89,14 +89,16 @@ If the current environment is not a ticket worktree/container pair, agents must 
 Use the helper script from the main repository checkout:
 
 ```bash
-./scripts/new-ticket-env.sh kua-123 short-description
+./scripts/start-ticket-workflow.sh kua-123 short-description
 ```
 
-This creates a new worktree under `../worktrees/` from `origin/main` and writes a `.ticket-env` file with container/runtime variables.
+This creates a new worktree under `../worktrees/` from `origin/main`, writes a `.ticket-env` file with container/runtime variables, and starts the ticket container.
 
-Inside the new worktree, start the ticket container:
+If you need manual steps instead of the helper:
 
 ```bash
+./scripts/new-ticket-env.sh kua-123 short-description
+cd ../worktrees/kua-123-short-description
 set -a; source .ticket-env; set +a
 docker compose -f docker-compose.ticket.yml up -d --build
 docker compose -f docker-compose.ticket.yml exec ticket-dev bash
