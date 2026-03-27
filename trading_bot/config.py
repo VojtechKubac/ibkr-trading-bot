@@ -67,6 +67,19 @@ def _parse_decimal_env(name: str, default: str) -> Decimal:
         ) from None
 
 
+def _parse_optional_decimal_env(name: str) -> Decimal | None:
+    """Read an optional Decimal from the environment (blank/absent -> None)."""
+    raw = os.getenv(name)
+    if raw is None or not raw.strip():
+        return None
+    try:
+        return Decimal(raw.strip())
+    except InvalidOperation:
+        raise ValueError(
+            f"Environment variable {name}={raw!r} is not a valid decimal"
+        ) from None
+
+
 # ---------------------------------------------------------------------------
 # IBKR connection defaults
 # ---------------------------------------------------------------------------
@@ -86,6 +99,16 @@ SIGNAL_STRATEGY: str = os.getenv("SIGNAL_STRATEGY", "simple").strip().lower()
 STOP_LOSS_PCT: float = _parse_float_env("STOP_LOSS_PCT", 0.15)
 POSITION_ALLOCATION_PCT: float = _parse_float_env("POSITION_ALLOCATION_PCT", 0.25)
 PORTFOLIO_VALUE: Decimal = _parse_decimal_env("PORTFOLIO_VALUE", "10000")
+
+# ---------------------------------------------------------------------------
+# IBKR execution guardrails
+# ---------------------------------------------------------------------------
+IBKR_KILL_SWITCH: bool = _parse_bool_env("IBKR_KILL_SWITCH", False)
+IBKR_MAX_ORDERS_PER_DAY: int = _parse_int_env("IBKR_MAX_ORDERS_PER_DAY", 5)
+IBKR_MAX_POSITION_SIZE: int = _parse_int_env("IBKR_MAX_POSITION_SIZE", 1_000_000)
+IBKR_MAX_DAILY_NOTIONAL: Decimal | None = _parse_optional_decimal_env(
+    "IBKR_MAX_DAILY_NOTIONAL"
+)
 
 # ---------------------------------------------------------------------------
 # Storage

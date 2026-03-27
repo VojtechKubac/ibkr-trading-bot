@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+from datetime import date
 from dataclasses import dataclass
 from typing import Literal, Optional
 
@@ -25,11 +26,21 @@ class DryRunSkipped:
 
 @dataclass
 class OrderSkipped:
-    """Returned when a BUY/SELL is skipped because the account position makes it redundant."""
+    """Returned when a BUY/SELL signal is skipped by pre-trade checks."""
 
     signal: Signal
     ib_symbol: str
-    reason: Literal["already_long", "already_flat"]
+    reason: Literal[
+        "already_long",
+        "already_flat",
+        "kill_switch_enabled",
+        "max_orders_per_day_reached",
+        "max_position_size_exceeded",
+        "max_daily_notional_exceeded",
+        "missing_price_for_notional_cap",
+        "orders_today_unavailable",
+        "daily_notional_unavailable",
+    ]
 
 
 @dataclass
@@ -43,6 +54,14 @@ class IBKRConfig:
     exchange: str = "SMART"
     currency: str = config.IBKR_CURRENCY
     timeout: int = config.IBKR_TIMEOUT
+    kill_switch: bool = config.IBKR_KILL_SWITCH
+    max_orders_per_day: int = config.IBKR_MAX_ORDERS_PER_DAY
+    max_position_size: int = config.IBKR_MAX_POSITION_SIZE
+    max_daily_notional: float | None = (
+        float(config.IBKR_MAX_DAILY_NOTIONAL)
+        if config.IBKR_MAX_DAILY_NOTIONAL is not None
+        else None
+    )
 
 
 class IBKRClient:
@@ -70,7 +89,12 @@ class IBKRClient:
     def connect(self) -> None:
         """Connect to TWS / IB Gateway, raising ConnectionError on timeout."""
         if not self.ib.isConnected():
-            logger.info("Connecting to IBKR at %s:%d (client_id=%d)", self.cfg.host, self.cfg.port, self.cfg.client_id)
+            logger.info(
+                "Connecting to IBKR at %s:%d (client_id=%d)",
+                self.cfg.host,
+                self.cfg.port,
+                self.cfg.client_id,
+            )
             try:
                 self.ib.connect(
                     self.cfg.host,
@@ -125,8 +149,51 @@ class IBKRClient:
         trade = self.ib.placeOrder(contract, order)
         # Give IBKR a small moment to process the order so status is populated.
         self.ib.sleep(0.5)
-        logger.info("Order placed: id=%s status=%s", trade.order.orderId, trade.orderStatus.status)
+        logger.info(
+            "Order placed: id=%s status=%s",
+            trade.order.orderId,
+            trade.orderStatus.status,
+        )
         return trade
+
+    def get_today_order_count(self) -> int | None:
+        """Return number of orders submitted today, or None if IBKR query fails."""
+        try:
+            today = date.today()
+            count = 0
+            for trade in self.ib.trades():
+                status = getattr(getattr(trade, "orderStatus", None), "status", None)
+                if status in {"Inactive", "Cancelled"}:
+                    continue
+                log_entries = list(getattr(trade, "log", []) or [])
+                if not log_entries:
+                    continue
+                last_time = getattr(log_entries[-1], "time", None)
+                if last_time is None:
+                    continue
+                if getattr(last_time, "date", lambda: None)() == today:
+                    count += 1
+            return count
+        except Exception:
+            logger.error("Failed to fetch today's order count from IBKR", exc_info=True)
+            return None
+
+    def get_today_filled_notional(self) -> float | None:
+        """Return today's filled notional in account currency, or None if unavailable."""
+        try:
+            today = date.today()
+            total = 0.0
+            for fill in self.ib.fills():
+                exec_time = getattr(fill.execution, "time", None)
+                if exec_time is None or getattr(exec_time, "date", lambda: None)() != today:
+                    continue
+                shares = abs(float(getattr(fill.execution, "shares", 0.0)))
+                price = float(getattr(fill.execution, "price", 0.0))
+                total += shares * price
+            return total
+        except Exception:
+            logger.error("Failed to fetch today's filled notional from IBKR", exc_info=True)
+            return None
 
 
 def execute_signal_as_market_order(
@@ -134,6 +201,7 @@ def execute_signal_as_market_order(
     *,
     ib_symbol: str,
     quantity: int,
+    reference_price: float | None = None,
     cfg: Optional[IBKRConfig] = None,
 ):
     """
@@ -145,7 +213,7 @@ def execute_signal_as_market_order(
 
     Returns:
       - ``None`` for HOLD
-      - :class:`DryRunSkipped` when ``DRYRUN`` is not explicitly ``"false"``
+      - :class:`DryRunSkipped` when ``DRYRUN`` is true
       - :class:`OrderSkipped` when the current account position makes the order redundant
       - an ib_insync Trade object on successful placement
     """
@@ -167,8 +235,44 @@ def execute_signal_as_market_order(
         logger.info("DRYRUN mode: skipping %s order for %d x %s", action, quantity, ib_symbol)
         return DryRunSkipped(signal=signal, ib_symbol=ib_symbol, quantity=quantity)
 
+    if cfg.kill_switch:
+        logger.error(
+            "Kill switch enabled: blocking %s order for %d x %s",
+            action,
+            quantity,
+            ib_symbol,
+        )
+        return OrderSkipped(signal=signal, ib_symbol=ib_symbol, reason="kill_switch_enabled")
+
     with IBKRClient(cfg) as client:
+        orders_today = client.get_today_order_count()
+        if orders_today is None:
+            logger.error(
+                "Skipping %s for %s: unable to evaluate orders/day guardrail",
+                action,
+                ib_symbol,
+            )
+            return OrderSkipped(signal=signal, ib_symbol=ib_symbol, reason="orders_today_unavailable")
+        if orders_today >= cfg.max_orders_per_day:
+            logger.warning(
+                "Skipping %s for %s: max orders/day reached (%d/%d)",
+                action,
+                ib_symbol,
+                orders_today,
+                cfg.max_orders_per_day,
+            )
+            return OrderSkipped(signal=signal, ib_symbol=ib_symbol, reason="max_orders_per_day_reached")
+
         current_pos = client.get_current_position(ib_symbol)
+        if action == "BUY" and current_pos + quantity > cfg.max_position_size:
+            logger.warning(
+                "Skipping BUY for %s: max position exceeded (current=%d + new=%d > limit=%d)",
+                ib_symbol,
+                current_pos,
+                quantity,
+                cfg.max_position_size,
+            )
+            return OrderSkipped(signal=signal, ib_symbol=ib_symbol, reason="max_position_size_exceeded")
         if action == "BUY" and current_pos > 0:
             logger.warning(
                 "Skipping BUY: already holding %d shares of %s", current_pos, ib_symbol
@@ -177,6 +281,32 @@ def execute_signal_as_market_order(
         if action == "SELL" and current_pos == 0:
             logger.warning("Skipping SELL: no position in %s", ib_symbol)
             return OrderSkipped(signal=signal, ib_symbol=ib_symbol, reason="already_flat")
+        if cfg.max_daily_notional is not None:
+            if reference_price is None:
+                logger.error(
+                    "Skipping %s for %s: max daily notional is configured but no reference price was provided",
+                    action,
+                    ib_symbol,
+                )
+                return OrderSkipped(signal=signal, ib_symbol=ib_symbol, reason="missing_price_for_notional_cap")
+            today_notional = client.get_today_filled_notional()
+            if today_notional is None:
+                logger.error(
+                    "Skipping %s for %s: unable to evaluate daily notional guardrail",
+                    action,
+                    ib_symbol,
+                )
+                return OrderSkipped(signal=signal, ib_symbol=ib_symbol, reason="daily_notional_unavailable")
+            projected_notional = today_notional + float(quantity) * reference_price
+            if projected_notional > cfg.max_daily_notional:
+                logger.warning(
+                    "Skipping %s for %s: max daily notional exceeded (projected=%.2f > limit=%.2f)",
+                    action,
+                    ib_symbol,
+                    projected_notional,
+                    cfg.max_daily_notional,
+                )
+                return OrderSkipped(signal=signal, ib_symbol=ib_symbol, reason="max_daily_notional_exceeded")
         trade = client.place_market_order(
             symbol=ib_symbol,
             quantity=quantity,
