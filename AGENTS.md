@@ -131,6 +131,8 @@ Cursor GUI does not run inside the container. Two options:
 - Keep container mounts limited to the ticket worktree.
 - For parallel ticket work, create one worktree/container pair per ticket.
 - Stop and remove ticket containers when work is complete.
+- **Never place `.env` files with real IBKR credentials inside a ticket worktree.** A worktree created from `origin/main` will not contain one (`.env` is gitignored), and it must stay that way. If the bot needs config values during development, pass them as environment variables from the host shell — they will be forwarded into the container automatically.
+- Ticket containers enforce `DRYRUN=true` and `IBKR_ENABLE=false` unconditionally (set in `docker-compose.ticket.yml`). Live order placement from a ticket container is not possible even if credentials are present.
 
 ## What NOT to Do
 

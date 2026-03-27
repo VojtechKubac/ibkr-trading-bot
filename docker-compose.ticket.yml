@@ -13,6 +13,8 @@ services:
     tty: true
     environment:
       - PYTHONUNBUFFERED=1
+      - DRYRUN=true          # hardcoded: ticket containers never place live orders
+      - IBKR_ENABLE=false    # hardcoded: IBKR execution disabled in ticket containers
       - ANTHROPIC_API_KEY    # passed through from host shell if set
       - CURSOR_API_KEY       # passed through from host shell if set
     volumes:
