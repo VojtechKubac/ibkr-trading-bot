@@ -66,11 +66,23 @@ DRYRUN=true python runweekly.py                      # coming soon
 
 - One Linear ticket = one PR.
 - One Linear ticket = one dedicated git worktree + one branch + one Docker container.
+- For agentic implementation, this workflow is the default and should be used unless explicitly overridden.
 - **Always branch from `main`**, never from another feature branch.
 - Branch naming: `kua-{number}-short-description` (e.g. `kua-19-agent-docs`).
 - All CodeRabbit review comments must be resolved before requesting human review.
 - **When working on an open PR, always check for merge conflicts first** (`git fetch origin main && git merge origin/main`). Resolve any conflicts before making further changes or pushing.
 - Do not merge your own PRs.
+
+### Required Agent Preflight (before coding)
+
+Before making any implementation change, coding agents must verify the environment:
+
+1. Confirm current path is a ticket worktree under `../worktrees/kua-*`.
+2. Confirm `.ticket-env` exists in the current worktree.
+3. Confirm the ticket container is running (or start it).
+4. Confirm execution context uses the ticket worktree/container pair for this ticket.
+
+If the current environment is not a ticket worktree/container pair, agents must stop and prompt to bootstrap one first (using `./scripts/new-ticket-env.sh`), unless the user explicitly requests a quick/manual update from the main clone.
 
 ### Ticket Environment Bootstrap
 
@@ -132,8 +144,10 @@ Cursor GUI does not run inside the container. Two options:
 - Keep container mounts limited to the ticket worktree.
 - For parallel ticket work, create one worktree/container pair per ticket.
 - Stop and remove ticket containers when work is complete.
+- If a user explicitly requests a quick/manual update from the main clone, that is allowed; note this choice in the PR description using the PR template fields.
 - **Never place `.env` files with real IBKR credentials inside a ticket worktree.** A worktree created from `origin/main` will not contain one (`.env` is gitignored), and it must stay that way. Only `ANTHROPIC_API_KEY` and `CURSOR_API_KEY` are forwarded from the host shell into the container; IBKR credentials (`IBKR_*`) are intentionally not forwarded.
 - Ticket containers enforce `DRYRUN=true` and `IBKR_ENABLE=false` unconditionally (set in `docker-compose.ticket.yml`). Live order placement from a ticket container is not possible even if credentials are present.
+- CI is intentionally non-blocking for environment choice; enforcement happens early via agent preflight and review visibility.
 
 ## What NOT to Do
 
