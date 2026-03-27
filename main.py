@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import argparse
+import json
 import math
 from datetime import date
+from pathlib import Path
 
 from trading_bot.data import fetch_ohlcv
 from trading_bot.logging_config import setup_logging
@@ -10,6 +12,7 @@ from trading_bot.signals import IndicatorConfig, enrich_with_indicators, latest_
 from trading_bot.broker_ibkr import DryRunSkipped, IBKRConfig, OrderSkipped, execute_signal_as_market_order
 from trading_bot.assets import get_asset
 from trading_bot.backtest import BacktestConfig, run_backtest
+from trading_bot.metrics import build_performance_report
 from trading_bot import config
 
 
@@ -62,6 +65,11 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=0.15,
         help="Stop-loss threshold as fraction below entry price, e.g. 0.15 = 15%% (default: 0.15).",
+    )
+    parser.add_argument(
+        "--backtest-report-json",
+        default=None,
+        help="Optional path to write a JSON performance report for the backtest.",
     )
     parser.add_argument(
         "--ibkr-enable",
@@ -147,6 +155,47 @@ def main() -> None:
         print(f"Stop-loss exits:  {result.stop_loss_exits}")
         print()
         print(f"Number of trades: {len(result.trades)}")
+        report = build_performance_report(
+            equity_curve=result.equity_curve,
+            trades=result.trades,
+            position_curve=result.position_curve,
+        )
+        print("=== Performance report ===")
+        if report.cagr is not None:
+            print(f"CAGR:            {report.cagr * 100:.2f}%")
+        if report.annualized_volatility is not None:
+            print(f"Ann. volatility: {report.annualized_volatility * 100:.2f}%")
+        if report.sharpe is not None:
+            print(f"Sharpe (rf=0):   {report.sharpe:.2f}")
+        if report.exposure is not None:
+            print(f"Exposure:        {report.exposure * 100:.2f}%")
+        if report.turnover is not None:
+            print(f"Turnover:        {report.turnover:.4f}")
+        if report.win_rate is not None:
+            print(f"Win rate:        {report.win_rate * 100:.2f}%")
+        if report.avg_win is not None:
+            print(f"Avg win:         {report.avg_win:.2f}")
+        if report.avg_loss is not None:
+            print(f"Avg loss:        {report.avg_loss:.2f}")
+        if report.expectancy is not None:
+            print(f"Expectancy:      {report.expectancy:.2f}")
+        print(f"Round trips:     {report.trade_round_trips}")
+        print()
+        if args.backtest_report_json:
+            out_path = Path(args.backtest_report_json)
+            payload = {
+                "cagr": report.cagr,
+                "annualized_volatility": report.annualized_volatility,
+                "sharpe": report.sharpe,
+                "win_rate": report.win_rate,
+                "avg_win": report.avg_win,
+                "avg_loss": report.avg_loss,
+                "expectancy": report.expectancy,
+                "turnover": report.turnover,
+                "exposure": report.exposure,
+                "trade_round_trips": report.trade_round_trips,
+            }
+            out_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         if not result.trades.empty:
             print("First 5 trades:")
             print(result.trades.head())
