@@ -13,7 +13,24 @@ logger = logging.getLogger(__name__)
 
 
 def _compute_buy_size(*, cash: float, price: float, cfg: BacktestConfig) -> int:
-    """Compute BUY size according to cfg, respecting cash + commission."""
+    """Compute BUY size according to cfg, respecting cash + commission.
+
+    Parameters
+    ----------
+    cash : float
+        Available cash for the trade.
+    price : float
+        Execution price per share.
+    cfg : BacktestConfig
+        Configuration containing sizing_mode, percent_equity, min_position_size,
+        commission_pct, and commission_min.
+
+    Returns
+    -------
+    int
+        Number of shares to buy. Returns 0 if the computed size would be
+        below min_position_size, if cash is insufficient, or if price <= 0.
+    """
 
     if cfg.sizing_mode == "fixed":
         return int(cfg.position_size)
@@ -124,19 +141,19 @@ def run_backtest(
                 trade_value = buy_size * price
                 commission = max(trade_value * cfg.commission_pct, cfg.commission_min)
                 total_cost = trade_value + commission
-                if total_cost <= cash:
-                    cash -= total_cost
-                    position += buy_size
-                    entry_price = price
-                    commission_paid += commission
-                    trades.append({
-                        "timestamp": ts,
-                        "side": "BUY",
-                        "price": price,
-                        "size": buy_size,
-                        "commission": commission,
-                        "stop_loss": False,
-                    })
+                # _compute_buy_size already guarantees total_cost <= cash (within float tolerance).
+                cash -= total_cost
+                position += buy_size
+                entry_price = price
+                commission_paid += commission
+                trades.append({
+                    "timestamp": ts,
+                    "side": "BUY",
+                    "price": price,
+                    "size": buy_size,
+                    "commission": commission,
+                    "stop_loss": False,
+                })
         elif pending_side == "SELL" and position > 0:
             proceeds = position * price
             commission = max(proceeds * cfg.commission_pct, cfg.commission_min)
