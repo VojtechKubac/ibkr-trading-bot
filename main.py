@@ -8,7 +8,7 @@ from dataclasses import asdict
 from datetime import date
 from pathlib import Path
 
-from trading_bot.data import fetch_ohlcv
+from trading_bot.data import fetch_ohlcv, resample_ohlcv_weekly
 from trading_bot.logging_config import setup_logging
 from trading_bot.signals import IndicatorConfig, enrich_with_indicators, latest_signal
 from trading_bot.broker_ibkr import DryRunSkipped, IBKRConfig, OrderSkipped, execute_signal_as_market_order
@@ -43,6 +43,12 @@ def parse_args() -> argparse.Namespace:
         "--backtest",
         action="store_true",
         help="If set, run a simple backtest over the full history instead of only showing the latest signal.",
+    )
+    parser.add_argument(
+        "--backtest-timeframe",
+        choices=["weekly", "daily"],
+        default="weekly",
+        help="Backtest timeframe: weekly (default) or daily bars.",
     )
     parser.add_argument(
         "--backtest-initial-cash",
@@ -155,10 +161,12 @@ def main() -> None:
         lookback_days=args.lookback_days,
     )
 
-    df_ind = enrich_with_indicators(df, IndicatorConfig())
-
     if args.backtest:
+        df_bt = resample_ohlcv_weekly(df) if args.backtest_timeframe == "weekly" else df
+        df_ind = enrich_with_indicators(df_bt, IndicatorConfig())
+
         print("=== Backtest ===")
+        print(f"Timeframe:       {args.backtest_timeframe}")
         bt_cfg = BacktestConfig(
             initial_cash=args.backtest_initial_cash,
             sizing_mode=args.backtest_sizing_mode,
@@ -217,6 +225,8 @@ def main() -> None:
             print("First 5 trades:")
             print(result.trades.head())
         return
+
+    df_ind = enrich_with_indicators(df, IndicatorConfig())
 
     ts, sig, row = latest_signal(df_ind)
 

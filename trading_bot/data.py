@@ -72,3 +72,41 @@ def fetch_ohlcv(
 
     return hist
 
+
+
+def resample_ohlcv_weekly(df: pd.DataFrame, *, rule: str = "W-FRI") -> pd.DataFrame:
+    """Resample a daily OHLCV DataFrame to weekly bars.
+
+    The index is assumed to be datetime-like and sorted.
+
+    Aggregation rules:
+
+    - open: first
+    - high: max
+    - low: min
+    - close: last
+    - adj_close: last (if present)
+    - volume: sum (if present)
+
+    Args:
+        df: Daily OHLCV data with columns using the project's lowercase schema.
+        rule: Pandas resampling rule, defaulting to Friday-anchored weeks (W-FRI).
+
+    Returns:
+        Weekly OHLCV DataFrame.
+    """
+
+    if df.empty:
+        return df.copy()
+
+    cols = set(df.columns)
+    agg: dict[str, str] = {"open": "first", "high": "max", "low": "min", "close": "last"}
+    if "adj_close" in cols:
+        agg["adj_close"] = "last"
+    if "volume" in cols:
+        agg["volume"] = "sum"
+
+    out = df.resample(rule).agg(agg)
+    # Drop weeks where we didn't get a close (e.g., leading partial week)
+    out = out.dropna(subset=["close"]).sort_index()
+    return out
