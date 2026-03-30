@@ -209,3 +209,97 @@ class TestStopLoss:
         df = _df([_buy_row(100.0), _sell_row(90.0), _hold_row(90.0)])  # normal sell, no stop-loss
         result = run_backtest(df, cfg=BacktestConfig(stop_loss_pct=0.15, commission_pct=0.0, commission_min=0.0))
         assert result.stop_loss_exits == 0
+
+
+class TestEquitySizing:
+    def test_percent_equity_increases_size_with_equity_growth(self):
+        df = _df(
+            [
+                _buy_row(10.0),
+                _hold_row(10.0),  # BUY executes here at 10
+                _sell_row(20.0),
+                _hold_row(20.0),  # SELL executes here at 20
+                _buy_row(10.0),
+                _hold_row(10.0),  # second BUY executes here at 10
+            ]
+        )
+        cfg = BacktestConfig(
+            initial_cash=1000.0,
+            sizing_mode="percent_equity",
+            percent_equity=0.5,
+            min_position_size=1,
+            commission_pct=0.0,
+            commission_min=0.0,
+        )
+        result = run_backtest(df, cfg=cfg)
+        buys = result.trades[result.trades["side"] == "BUY"]
+        assert len(buys) == 2
+        assert buys.iloc[0]["size"] == 50
+        assert buys.iloc[1]["size"] == 75
+
+    def test_percent_equity_respects_min_position_size(self):
+        df = _df([_buy_row(100.0), _hold_row(100.0), _hold_row(100.0)])
+        cfg = BacktestConfig(
+            initial_cash=100.0,
+            sizing_mode="percent_equity",
+            percent_equity=0.5,
+            min_position_size=2,
+            commission_pct=0.0,
+            commission_min=0.0,
+        )
+        result = run_backtest(df, cfg=cfg)
+        assert result.trades.empty
+
+    def test_percent_equity_clamps_above_one(self):
+        """percent_equity > 1.0 should be treated as 1.0 (full equity)."""
+        df = _df([_buy_row(10.0), _hold_row(10.0), _hold_row(10.0)])
+        cfg_clamped = BacktestConfig(
+            initial_cash=1000.0,
+            sizing_mode="percent_equity",
+            percent_equity=1.5,
+            commission_pct=0.0,
+            commission_min=0.0,
+        )
+        cfg_full = BacktestConfig(
+            initial_cash=1000.0,
+            sizing_mode="percent_equity",
+            percent_equity=1.0,
+            commission_pct=0.0,
+            commission_min=0.0,
+        )
+        r_clamped = run_backtest(df, cfg=cfg_clamped)
+        r_full = run_backtest(df, cfg=cfg_full)
+        assert r_clamped.trades.iloc[0]["size"] == r_full.trades.iloc[0]["size"]
+
+    def test_percent_equity_zero_execution_price_returns_no_trade(self):
+        """Execution at price 0 (next bar) should not produce a trade."""
+        # BUY signal fires on bar 0 (price=10); execution bar 1 has price=0.
+        df = _df([_buy_row(10.0), _hold_row(0.0), _hold_row(10.0)])
+        cfg = BacktestConfig(
+            initial_cash=1000.0,
+            sizing_mode="percent_equity",
+            percent_equity=1.0,
+            commission_pct=0.0,
+            commission_min=0.0,
+        )
+        result = run_backtest(df, cfg=cfg)
+        assert result.trades.empty
+
+    def test_percent_equity_commission_reduces_size(self):
+        """High commission should reduce buy size below the naive calculation."""
+        # With 1000 cash, 100% equity, price=10: naive size = 100.
+        # With 50% commission, each share costs 15 -> max affordable = 66.
+        df = _df([_buy_row(10.0), _hold_row(10.0), _hold_row(10.0)])
+        cfg = BacktestConfig(
+            initial_cash=1000.0,
+            sizing_mode="percent_equity",
+            percent_equity=1.0,
+            min_position_size=1,
+            commission_pct=0.5,
+            commission_min=0.0,
+        )
+        result = run_backtest(df, cfg=cfg)
+        assert not result.trades.empty
+        buy_size = result.trades.iloc[0]["size"]
+        assert buy_size < 100
+        assert buy_size > 0
