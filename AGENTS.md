@@ -115,12 +115,15 @@ docker compose -f docker-compose.ticket.yml exec ticket-dev bash
 
 ### Running the AI agent inside the container
 
-Both Claude Code and Cursor CLI are installed in the container. Only `ANTHROPIC_API_KEY` and `CURSOR_API_KEY` are forwarded from the host shell; IBKR credentials are intentionally not forwarded (see `docker-compose.ticket.yml`).
+Both Claude Code and Cursor CLI are installed in the container. `ANTHROPIC_API_KEY`, `CURSOR_API_KEY`, and `GH_TOKEN` are forwarded from the host shell; IBKR credentials are intentionally not forwarded (see `docker-compose.ticket.yml`).
+
+`GH_TOKEN` must be a GitHub personal access token (classic or fine-grained) with `repo` scope. It is used by both `git push` (via the system git credential helper) and `gh pr create` (via the `GH_TOKEN` env var that `gh` reads automatically).
 
 **Claude Code:**
 
 ```bash
 export ANTHROPIC_API_KEY=sk-ant-...   # in host shell, before docker compose up
+export GH_TOKEN=ghp_...               # GitHub PAT with repo scope, before docker compose up
 # inside the container:
 claude --dangerously-skip-permissions
 ```
@@ -158,7 +161,7 @@ Cursor GUI does not run inside the container. Two options:
 - If a user explicitly requests a quick/manual update from the main clone, that is allowed; note this choice in the PR description using the PR template fields.
 - After opening a PR, agents must monitor CodeRabbit feedback, wait for review availability when delayed, and address all comments (including nitpicks) before requesting human review.
 - CodeRabbit is considered done when both conditions are true: (1) all discussions/comments are resolved, and (2) PR checks show no in-progress CodeRabbit run.
-- **Never place `.env` files with real IBKR credentials inside a ticket worktree.** A worktree created from `origin/main` will not contain one (`.env` is gitignored), and it must stay that way. Only `ANTHROPIC_API_KEY` and `CURSOR_API_KEY` are forwarded from the host shell into the container; IBKR credentials (`IBKR_*`) are intentionally not forwarded.
+- **Never place `.env` files with real IBKR credentials inside a ticket worktree.** A worktree created from `origin/main` will not contain one (`.env` is gitignored), and it must stay that way. Only `ANTHROPIC_API_KEY`, `CURSOR_API_KEY`, and `GH_TOKEN` are forwarded from the host shell into the container; IBKR credentials (`IBKR_*`) are intentionally not forwarded.
 - Ticket containers enforce `DRYRUN=true` and `IBKR_ENABLE=false` unconditionally (set in `docker-compose.ticket.yml`). Live order placement from a ticket container is not possible even if credentials are present.
 - CI is intentionally non-blocking for environment choice; enforcement happens early via agent preflight and review visibility.
 

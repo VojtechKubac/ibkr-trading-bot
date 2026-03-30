@@ -17,6 +17,7 @@ services:
       - IBKR_ENABLE=false    # hardcoded: IBKR execution disabled in ticket containers
       - ANTHROPIC_API_KEY    # passed through from host shell if set
       - CURSOR_API_KEY       # passed through from host shell if set
+      - GH_TOKEN             # passed through from host shell; required for git push and gh pr create
     volumes:
       - ./:/workspace
       - pip-cache:/home/agent/.cache/pip
