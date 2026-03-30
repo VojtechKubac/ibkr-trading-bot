@@ -28,6 +28,7 @@ class BacktestResult:
     """Container for the results of a backtest run."""
 
     equity_curve: pd.Series
+    position_curve: pd.Series
     trades: pd.DataFrame
     total_return: float
     max_drawdown: float
@@ -73,6 +74,7 @@ def run_backtest(
     position = 0        # number of shares held
     entry_price = 0.0   # price at which current position was opened
     equity: list[tuple] = []
+    positions: list[tuple] = []
     trades: list[dict] = []
     commission_paid = 0.0
     stop_loss_exits = 0
@@ -140,11 +142,18 @@ def run_backtest(
             pending_stop_loss = stop_loss_triggered
 
         equity.append((ts, cash + position * price))
+        positions.append((ts, position))
 
     equity_series = pd.Series(
         data=[v for _, v in equity],
         index=[t for t, _ in equity],
         name="equity",
+    )
+    position_series = pd.Series(
+        data=[v for _, v in positions],
+        index=[t for t, _ in positions],
+        name="position",
+        dtype="int64",
     )
 
     total_return = (equity_series.iloc[-1] / cfg.initial_cash) - 1.0
@@ -164,6 +173,7 @@ def run_backtest(
     )
     return BacktestResult(
         equity_curve=equity_series,
+        position_curve=position_series,
         trades=trades_df,
         total_return=float(total_return),
         max_drawdown=max_drawdown,
