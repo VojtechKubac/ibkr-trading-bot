@@ -2,8 +2,14 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from decimal import Decimal
 
 import pandas as pd
+
+
+def _d(value: object) -> Decimal:
+    """Convert a numeric value to Decimal for precise monetary arithmetic."""
+    return Decimal(str(value or 0))
 
 
 @dataclass(frozen=True)
@@ -67,6 +73,14 @@ def _periods_per_year(index: pd.Index) -> float | None:
     median_days = deltas.dt.total_seconds().median() / (24 * 3600)
     if not median_days or median_days <= 0:
         return None
+    # Use common trading-calendar constants to avoid overstating annualization
+    # when pd.infer_freq fails (e.g. due to market holidays).
+    if median_days <= 1.5:
+        return 252.0
+    if median_days <= 7.5:
+        return 52.0
+    if 27.0 <= median_days <= 32.0:
+        return 12.0
     return 365.25 / float(median_days)
 
 
@@ -84,15 +98,15 @@ def _round_trip_pnls(trades: pd.DataFrame) -> list[float]:
             open_buy = row
             continue
         if side == "SELL" and open_buy is not None:
-            size = float(open_buy.get("size", 0) or 0)
-            buy_price = float(open_buy.get("price", 0) or 0)
-            sell_price = float(row.get("price", 0) or 0)
-            buy_comm = float(open_buy.get("commission", 0) or 0)
-            sell_comm = float(row.get("commission", 0) or 0)
+            size = _d(open_buy.get("size", 0))
+            buy_price = _d(open_buy.get("price", 0))
+            sell_price = _d(row.get("price", 0))
+            buy_comm = _d(open_buy.get("commission", 0))
+            sell_comm = _d(row.get("commission", 0))
 
             buy_cost = size * buy_price + buy_comm
             sell_proceeds = size * sell_price - sell_comm
-            pnls.append(sell_proceeds - buy_cost)
+            pnls.append(float(sell_proceeds - buy_cost))
             open_buy = None
 
     return pnls
@@ -162,10 +176,13 @@ def build_performance_report(
 
     turnover: float | None = None
     if not trades.empty and "size" in trades.columns and "price" in trades.columns:
-        traded_value = float((trades["size"] * trades["price"]).abs().sum())
-        avg_equity = float(equity_curve.mean())
+        traded_value = sum(
+            (_d(s) * _d(p)).copy_abs()
+            for s, p in zip(trades["size"], trades["price"])
+        )
+        avg_equity = _d(equity_curve.mean())
         if avg_equity > 0:
-            turnover = traded_value / avg_equity
+            turnover = float(traded_value / avg_equity)
 
     exposure: float | None = None
     if position_curve is not None and not position_curve.empty:
