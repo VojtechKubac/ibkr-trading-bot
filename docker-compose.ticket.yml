@@ -20,6 +20,9 @@ services:
     volumes:
       - ./:/workspace
       - pip-cache:/home/agent/.cache/pip
+    mem_limit: 8g
+    cpus: 3
+    pids_limit: 256
     cap_drop:
       - ALL
     security_opt:
