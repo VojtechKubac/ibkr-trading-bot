@@ -117,13 +117,18 @@ docker compose -f docker-compose.ticket.yml exec ticket-dev bash
 
 Both Claude Code and Cursor CLI are installed in the container. `ANTHROPIC_API_KEY`, `CURSOR_API_KEY`, and `GH_TOKEN` are forwarded from the host shell; IBKR credentials are intentionally not forwarded (see `docker-compose.ticket.yml`).
 
-`GH_TOKEN` must be a GitHub personal access token (classic or fine-grained) with `repo` scope. It is used by both `git push` (via the system git credential helper) and `gh pr create` (via the `GH_TOKEN` env var that `gh` reads automatically).
+`GH_TOKEN` must be a GitHub personal access token:
+- **Classic PAT**: include `repo` scope
+- **Fine-grained PAT**: grant `Contents: Read and write` and `Pull requests: Read and write` repository permissions
+
+It is used by both `git push` (via the system git credential helper) and `gh pr create` (via the `GH_TOKEN` env var that `gh` reads automatically).
 
 **Claude Code:**
 
 ```bash
 export ANTHROPIC_API_KEY=sk-ant-...   # in host shell, before docker compose up
-export GH_TOKEN=ghp_...               # GitHub PAT with repo scope, before docker compose up
+export GH_TOKEN=ghp_...               # classic PAT with repo scope, before docker compose up
+# or: export GH_TOKEN=github_pat_...  # fine-grained PAT with repo permissions granted
 # inside the container:
 claude --dangerously-skip-permissions
 ```

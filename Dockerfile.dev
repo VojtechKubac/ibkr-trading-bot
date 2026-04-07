@@ -1,6 +1,7 @@
 FROM python:3.12-slim
 
 ARG USERNAME=agent
+ARG GH_VERSION=2.89.0
 ARG USER_UID=1000
 ARG USER_GID=1000
 
@@ -18,12 +19,25 @@ RUN apt-get update \
          | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
          > /etc/apt/sources.list.d/github-cli.list \
-    && apt-get update && apt-get install -y --no-install-recommends gh \
+    && apt-get update && apt-get install -y --no-install-recommends "gh=${GH_VERSION}*" \
     && rm -rf /var/lib/apt/lists/*
 
-# Git credential helper: use GH_TOKEN for HTTPS pushes (avoids interactive auth)
+# Git credential helper: use GH_TOKEN for HTTPS pushes to github.com only
 RUN git config --system credential.helper \
-    '!f() { echo "username=x-access-token"; echo "password=${GH_TOKEN}"; }; f'
+    '!f() { \
+      proto=""; host=""; \
+      while IFS= read -r line; do \
+        [ -z "$line" ] && break; \
+        case "$line" in \
+          protocol=*) proto="${line#protocol=}" ;; \
+          host=*) host="${line#host=}" ;; \
+        esac; \
+      done; \
+      if [ "$proto" = "https" ] && [ "$host" = "github.com" ] && [ -n "${GH_TOKEN:-}" ]; then \
+        echo "username=x-access-token"; \
+        echo "password=${GH_TOKEN}"; \
+      fi; \
+    }; f'
 
 # Claude Code CLI
 RUN npm install -g @anthropic-ai/claude-code
