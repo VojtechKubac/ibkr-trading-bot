@@ -121,7 +121,7 @@ Both Claude Code and Cursor CLI are installed in the container. `ANTHROPIC_API_K
 - **Classic PAT**: include `repo` scope
 - **Fine-grained PAT**: grant `Contents: Read and write` and `Pull requests: Read and write` repository permissions
 
-It is used by both `git push` (via the system git credential helper) and `gh pr create` (via the `GH_TOKEN` env var that `gh` reads automatically).
+It is used by both `git push` (via the system git credential helper) and `gh pr create` (via the `GH_TOKEN` env var that `gh` reads automatically). The credential helper is repo-scoped by `GH_ALLOWED_REPO_PATH` (default: `VojtechKubac/ibkr-trading-bot.git`).
 
 **Claude Code:**
 
@@ -129,6 +129,8 @@ It is used by both `git push` (via the system git credential helper) and `gh pr 
 export ANTHROPIC_API_KEY=sk-ant-...   # in host shell, before docker compose up
 export GH_TOKEN=ghp_...               # classic PAT with repo scope, before docker compose up
 # or: export GH_TOKEN=github_pat_...  # fine-grained PAT with repo permissions granted
+# optional override for forks/mirrors:
+export GH_ALLOWED_REPO_PATH=owner/repo.git
 # inside the container:
 claude --dangerously-skip-permissions
 ```
@@ -142,6 +144,15 @@ cursor-agent -p --force --sandbox disabled "implement the ticket"
 ```
 
 `-p` = non-interactive/headless, `--force` = apply changes without confirmation, `--sandbox disabled` = allow the agent to run shell commands freely (equivalent to Claude Code's `--dangerously-skip-permissions`).
+
+Before `git push` / `gh pr create`, run an auth preflight in the container:
+
+```bash
+gh auth status --hostname github.com
+git ls-remote origin -h >/dev/null
+```
+
+Ticket containers set `GIT_TERMINAL_PROMPT=0` and `GH_PROMPT_DISABLED=1`, so missing or invalid credentials fail fast instead of opening interactive prompts.
 
 The container has outbound internet access (needed for API calls and package downloads). The safety guarantee is **host filesystem isolation**, not network isolation:
 
