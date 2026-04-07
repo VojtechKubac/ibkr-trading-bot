@@ -25,6 +25,17 @@ RUN curl -fsSL https://cursor.com/install | bash \
     && chmod 755 /root /root/.local /root/.local/bin \
     && chmod -R a+rx /root/.local/share/cursor-agent
 
+# Git system config: identity and global hooks directory
+# --system applies to all users regardless of HOME; must run as root before USER switch
+RUN git config --system user.name "ticket-agent" \
+    && git config --system user.email "ticket-agent@noreply" \
+    && git config --system core.hooksPath /git-hooks
+
+# Pre-push hook: block any push to main or master
+RUN mkdir -p /git-hooks \
+    && printf '#!/bin/sh\nwhile read local_ref local_sha remote_ref remote_sha; do\n  case "$remote_ref" in\n    refs/heads/main|refs/heads/master)\n      echo "ERROR: pushing to main/master is blocked in ticket containers." >&2\n      exit 1\n      ;;\n  esac\ndone\nexit 0\n' > /git-hooks/pre-push \
+    && chmod +x /git-hooks/pre-push
+
 RUN groupadd --gid "${USER_GID}" "${USERNAME}" \
     && useradd --uid "${USER_UID}" --gid "${USER_GID}" --create-home --shell /bin/bash "${USERNAME}"
 
