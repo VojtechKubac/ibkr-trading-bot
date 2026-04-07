@@ -58,32 +58,25 @@ TICKET_NUM="$(printf '%s' "${TICKET_ID}" | grep -oE '[0-9]+$')"
 
 echo "Fetching ${TICKET_ID_UPPER} from Linear..."
 
-LINEAR_RESPONSE=$(curl -s -X POST https://api.linear.app/graphql \
+LINEAR_RESPONSE=$(curl -s --connect-timeout 10 --max-time 30 -X POST https://api.linear.app/graphql \
   -H "Authorization: ${LINEAR_API_KEY}" \
   -H "Content-Type: application/json" \
   -d "{\"query\": \"{ issues(filter: { team: { key: { eq: \\\"${TEAM_KEY}\\\" } }, number: { eq: ${TICKET_NUM} } }, first: 1) { nodes { identifier title description url } } }\"}" \
   || { echo "Error: Linear API request failed" >&2; exit 1; })
 
-TICKET_TITLE=$(python3 -c "
-import sys, json
-d = json.loads('''${LINEAR_RESPONSE}''')
-nodes = d['data']['issues']['nodes']
-print(nodes[0]['title'] if nodes else '')
-" 2>/dev/null || true)
-
-TICKET_DESC=$(python3 -c "
-import sys, json
-d = json.loads('''${LINEAR_RESPONSE}''')
-nodes = d['data']['issues']['nodes']
-print(nodes[0].get('description') or '' if nodes else '')
-" 2>/dev/null || true)
-
-TICKET_URL=$(python3 -c "
-import sys, json
-d = json.loads('''${LINEAR_RESPONSE}''')
-nodes = d['data']['issues']['nodes']
-print(nodes[0]['url'] if nodes else '')
-" 2>/dev/null || true)
+eval "$(printf '%s' "${LINEAR_RESPONSE}" | python3 - <<'PYEOF'
+import sys, json, shlex
+try:
+    d = json.loads(sys.stdin.read())
+    nodes = d.get("data", {}).get("issues", {}).get("nodes", [])
+    n = nodes[0] if nodes else {}
+    print(f"TICKET_TITLE={shlex.quote(n.get('title') or '')}")
+    print(f"TICKET_DESC={shlex.quote(n.get('description') or '')}")
+    print(f"TICKET_URL={shlex.quote(n.get('url') or '')}")
+except Exception as e:
+    print(f"echo 'JSON parse error: {e}' >&2; exit 1")
+PYEOF
+)"
 
 if [[ -z "${TICKET_TITLE}" ]]; then
   echo "Error: could not fetch ${TICKET_ID_UPPER} from Linear. Check LINEAR_API_KEY and ticket ID." >&2
