@@ -6,11 +6,20 @@
 #
 # Env vars:
 #   MAX_PARALLEL   — max concurrent agents (default: 5)
-#   ANTHROPIC_API_KEY, GH_TOKEN, LINEAR_API_KEY — passed through to run-ticket.sh
+#   ANTHROPIC_API_KEY, GH_TOKEN, LINEAR_API_KEY — forwarded into each ticket container
+#
+# Depends on: scripts/run-ticket.sh (added by KUA-72); ensure that PR is merged
+# into main before using this script.
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+if [[ ! -x "${SCRIPT_DIR}/run-ticket.sh" ]]; then
+  echo "Error: ${SCRIPT_DIR}/run-ticket.sh not found or not executable." >&2
+  echo "This script requires run-ticket.sh from KUA-72. Ensure that PR is merged." >&2
+  exit 1
+fi
 MAX_PARALLEL="${MAX_PARALLEL:-5}"
 DRY_RUN=false
 
