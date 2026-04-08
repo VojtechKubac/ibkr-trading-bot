@@ -18,6 +18,7 @@ services:
       - ANTHROPIC_API_KEY    # passed through from host shell if set
       - CURSOR_API_KEY       # passed through from host shell if set
       - GH_TOKEN             # passed through from host shell; required for git push and gh pr create
+      - LINEAR_API_KEY       # passed through from host shell; required for Linear API access
       - GH_ALLOWED_REPO_PATH=${GH_ALLOWED_REPO_PATH:-VojtechKubac/ibkr-trading-bot.git}
       - GIT_TERMINAL_PROMPT=0
       - GH_PROMPT_DISABLED=1
