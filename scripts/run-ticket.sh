@@ -161,7 +161,10 @@ if [[ ! -f .ticket-env ]]; then
 fi
 set -a; source .ticket-env; set +a
 
-docker compose -f docker-compose.ticket.yml up -d 2>&1
+if ! docker compose -f docker-compose.ticket.yml up -d 2>&1; then
+  echo "Error: failed to start container for ${TICKET_ID_UPPER}" >&2
+  exit 1
+fi
 
 # ---------------------------------------------------------------------------
 # Step 4: Write agent prompt to a file in the worktree (avoids shell quoting)
