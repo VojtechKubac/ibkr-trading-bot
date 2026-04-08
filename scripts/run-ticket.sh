@@ -17,9 +17,14 @@ set -euo pipefail
 # Args and env validation
 # ---------------------------------------------------------------------------
 
-if [[ $# -lt 1 ]]; then
+if [[ $# -ne 1 ]]; then
   echo "Usage: $0 <ticket-id>" >&2
   echo "Example: $0 kua-123" >&2
+  exit 1
+fi
+
+if [[ ! "$1" =~ ^[a-z]+-[0-9]+$ ]]; then
+  echo "Error: ticket-id must match '<team>-<number>' (example: kua-123)." >&2
   exit 1
 fi
 
@@ -77,7 +82,7 @@ normalize_slug() {
     | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//'
 }
 
-TICKET_ID="$(normalize_slug "$1")"
+TICKET_ID="$1"
 TICKET_ID_UPPER="$(printf '%s' "${TICKET_ID}" | tr '[:lower:]' '[:upper:]')"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -103,18 +108,19 @@ LINEAR_RESPONSE=$(curl -s --connect-timeout 10 --max-time 30 -X POST https://api
   -d "{\"query\": \"{ issues(filter: { team: { key: { eq: \\\"${TEAM_KEY}\\\" } }, number: { eq: ${TICKET_NUM} } }, first: 1) { nodes { identifier title description url } } }\"}" \
   || { echo "Error: Linear API request failed" >&2; exit 1; })
 
-eval "$(printf '%s' "${LINEAR_RESPONSE}" | python3 - <<'PYEOF'
-import sys, json, shlex
+eval "$(
+printf '%s' "${LINEAR_RESPONSE}" | python3 -c '
+import json, shlex, sys
 try:
     d = json.loads(sys.stdin.read())
     nodes = d.get("data", {}).get("issues", {}).get("nodes", [])
     n = nodes[0] if nodes else {}
-    print(f"TICKET_TITLE={shlex.quote(n.get('title') or '')}")
-    print(f"TICKET_DESC={shlex.quote(n.get('description') or '')}")
-    print(f"TICKET_URL={shlex.quote(n.get('url') or '')}")
+    print(f"TICKET_TITLE={shlex.quote(n.get(\"title\") or \"\")}")
+    print(f"TICKET_DESC={shlex.quote(n.get(\"description\") or \"\")}")
+    print(f"TICKET_URL={shlex.quote(n.get(\"url\") or \"\")}")
 except Exception as e:
-    print(f"echo 'JSON parse error: {e}' >&2; exit 1")
-PYEOF
+    print(f"echo '\''JSON parse error: {e}'\'' >&2; exit 1")
+'
 )"
 
 if [[ -z "${TICKET_TITLE}" ]]; then
@@ -149,6 +155,10 @@ fi
 # ---------------------------------------------------------------------------
 
 cd "${WORKTREE_DIR}"
+if [[ ! -f .ticket-env ]]; then
+  echo "Error: .ticket-env not found in ${WORKTREE_DIR}" >&2
+  exit 1
+fi
 set -a; source .ticket-env; set +a
 
 docker compose -f docker-compose.ticket.yml up -d 2>&1
@@ -159,6 +169,11 @@ docker compose -f docker-compose.ticket.yml up -d 2>&1
 
 PROMPT_FILE="${WORKTREE_DIR}/.agent-prompt.txt"
 LOG_FILE="${WORKTREE_DIR}/.agent.log"
+
+cleanup() {
+  rm -f "${PROMPT_FILE:-}"
+}
+trap cleanup EXIT INT TERM
 
 cat > "${PROMPT_FILE}" <<PROMPT
 You are a coding agent implementing Linear ticket ${TICKET_ID_UPPER}.
@@ -208,20 +223,19 @@ echo ""
 echo "Launching ${AGENT_LABEL} agent for ${TICKET_ID_UPPER} (log: ${LOG_FILE})..."
 echo ""
 
+set +e
 if [[ "${AGENT_CLI}" == "cursor" ]]; then
   docker compose -f docker-compose.ticket.yml exec -T ticket-dev \
     bash -c 'cursor-agent -p --force --sandbox disabled "$(cat /workspace/.agent-prompt.txt)"' \
     2>&1 | tee "${LOG_FILE}"
+  AGENT_EXIT=${PIPESTATUS[0]}
 else
   docker compose -f docker-compose.ticket.yml exec -T ticket-dev \
     bash -c 'claude --dangerously-skip-permissions -p "$(cat /workspace/.agent-prompt.txt)"' \
     2>&1 | tee "${LOG_FILE}"
+  AGENT_EXIT=${PIPESTATUS[0]}
 fi
-
-AGENT_EXIT=${PIPESTATUS[0]}
-
-# Clean up prompt file
-rm -f "${PROMPT_FILE}"
+set -e
 
 echo ""
 if [[ ${AGENT_EXIT} -eq 0 ]]; then
