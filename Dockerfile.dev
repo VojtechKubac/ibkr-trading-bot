@@ -1,20 +1,60 @@
 FROM python:3.12-slim
 
 ARG USERNAME=agent
+ARG GH_VERSION=2.89.0
+ARG GH_ALLOWED_REPO_PATH=VojtechKubac/ibkr-trading-bot.git
 ARG USER_UID=1000
 ARG USER_GID=1000
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1
+ENV GH_ALLOWED_REPO_PATH=${GH_ALLOWED_REPO_PATH}
 
-# System packages + Node.js 22 (required for Claude Code CLI)
+# System packages + Node.js 22 (required for Claude Code CLI) + gh CLI
 RUN apt-get update \
     && apt-get install -y --no-install-recommends git bash ca-certificates curl \
     && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && ln -sf /usr/bin/node /usr/local/bin/node \
+    && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+         | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+         > /etc/apt/sources.list.d/github-cli.list \
+    && apt-get update && apt-get install -y --no-install-recommends "gh=${GH_VERSION}*" \
     && rm -rf /var/lib/apt/lists/*
+
+# Git credential helper: use GH_TOKEN for HTTPS auth to github.com only.
+# Restrict token usage to a single repository path by default.
+RUN git config --system credential.useHttpPath true \
+    && git config --system credential.helper \
+    '!f() { \
+      proto=""; host=""; path=""; \
+      while IFS= read -r line; do \
+        [ -z "$line" ] && break; \
+        case "$line" in \
+          protocol=*) proto="${line#protocol=}" ;; \
+          host=*) host="${line#host=}" ;; \
+          path=*) path="${line#path=}" ;; \
+        esac; \
+      done; \
+      if [ "$proto" = "https" ] && [ "$host" = "github.com" ]; then \
+        req_path="${path#/}"; \
+        allowed_path="${GH_ALLOWED_REPO_PATH:-}"; \
+        req_path_norm="${req_path%.git}"; \
+        allowed_path_norm="${allowed_path%.git}"; \
+        if [ -z "${GH_TOKEN:-}" ]; then \
+          echo "GH_TOKEN is not set; GitHub HTTPS auth is disabled." >&2; \
+          return 0; \
+        fi; \
+        if [ -n "$allowed_path" ] && [ "$req_path_norm" != "$allowed_path_norm" ]; then \
+          echo "Refusing GH_TOKEN for github.com/$req_path (allowed: $allowed_path)." >&2; \
+          return 0; \
+        fi; \
+        echo "username=x-access-token"; \
+        echo "password=${GH_TOKEN}"; \
+      fi; \
+    }; f'
 
 # Claude Code CLI
 RUN npm install -g @anthropic-ai/claude-code
@@ -24,6 +64,17 @@ RUN curl -fsSL https://cursor.com/install | bash \
     && ln -sf /root/.local/bin/cursor-agent /usr/local/bin/cursor-agent \
     && chmod 755 /root /root/.local /root/.local/bin \
     && chmod -R a+rx /root/.local/share/cursor-agent
+
+# Git system config: identity and global hooks directory
+# --system applies to all users regardless of HOME; must run as root before USER switch
+RUN git config --system user.name "ticket-agent" \
+    && git config --system user.email "ticket-agent@noreply" \
+    && git config --system core.hooksPath /git-hooks
+
+# Pre-push hook: block any push to main or master
+RUN mkdir -p /git-hooks \
+    && printf '#!/bin/sh\nwhile read local_ref local_sha remote_ref remote_sha; do\n  case "$remote_ref" in\n    refs/heads/main|refs/heads/master)\n      echo "ERROR: pushing to main/master is blocked in ticket containers." >&2\n      exit 1\n      ;;\n  esac\ndone\nexit 0\n' > /git-hooks/pre-push \
+    && chmod +x /git-hooks/pre-push
 
 RUN groupadd --gid "${USER_GID}" "${USERNAME}" \
     && useradd --uid "${USER_UID}" --gid "${USER_GID}" --create-home --shell /bin/bash "${USERNAME}"

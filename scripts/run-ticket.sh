@@ -5,9 +5,11 @@
 #   e.g. ./scripts/run-ticket.sh kua-123
 #
 # Required env vars (set in host shell before calling this script):
-#   ANTHROPIC_API_KEY  — Claude API key
 #   GH_TOKEN           — GitHub PAT with repo scope (for git push + gh pr create)
 #   LINEAR_API_KEY     — Linear personal API key (for fetching ticket details)
+#   AGENT_CLI          — optional override: claude|cursor
+#   ANTHROPIC_API_KEY  — required when AGENT_CLI=claude (or auto-detected Claude)
+#   CURSOR_API_KEY     — required when AGENT_CLI=cursor (or auto-detected Cursor)
 
 set -euo pipefail
 
@@ -21,12 +23,49 @@ if [[ $# -lt 1 ]]; then
   exit 1
 fi
 
-for var in ANTHROPIC_API_KEY GH_TOKEN LINEAR_API_KEY; do
+detect_agent_cli() {
+  local override="${AGENT_CLI:-}"
+  if [[ -n "${override}" ]]; then
+    override="$(printf '%s' "${override}" | tr '[:upper:]' '[:lower:]')"
+    if [[ "${override}" != "claude" && "${override}" != "cursor" ]]; then
+      echo "Error: AGENT_CLI must be either 'claude' or 'cursor'." >&2
+      exit 1
+    fi
+    printf '%s' "${override}"
+    return
+  fi
+
+  if [[ "${CURSOR_AGENT:-}" == "1" || "${CURSOR_INVOKED_AS:-}" == "agent" ]]; then
+    printf '%s' "cursor"
+    return
+  fi
+
+  printf '%s' "claude"
+}
+
+AGENT_CLI="$(detect_agent_cli)"
+
+for var in GH_TOKEN LINEAR_API_KEY; do
   if [[ -z "${!var:-}" ]]; then
     echo "Error: ${var} is not set in the host shell." >&2
     exit 1
   fi
 done
+
+if [[ "${AGENT_CLI}" == "cursor" ]]; then
+  AGENT_LABEL="Cursor"
+  AGENT_FOOTER_LINE="🤖 Generated with [Cursor](https://cursor.com)"
+  REQUIRED_AGENT_API_KEY="CURSOR_API_KEY"
+else
+  AGENT_LABEL="Claude"
+  AGENT_FOOTER_LINE="🤖 Generated with [Claude Code](https://claude.com/claude-code)"
+  REQUIRED_AGENT_API_KEY="ANTHROPIC_API_KEY"
+fi
+
+if [[ -z "${!REQUIRED_AGENT_API_KEY:-}" ]]; then
+  echo "Error: ${REQUIRED_AGENT_API_KEY} is required when AGENT_CLI=${AGENT_CLI}." >&2
+  exit 1
+fi
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -153,7 +192,7 @@ ${TICKET_DESC}
    gh pr create --title "${TICKET_ID_UPPER}: ${TICKET_TITLE}" --body "..."
    \`\`\`
    PR body must contain: Summary (bullet points), Test plan (checklist), and the footer line:
-   🤖 Generated with [Claude Code](https://claude.com/claude-code)
+   ${AGENT_FOOTER_LINE}
 7. After creating the PR, wait for CodeRabbit review. Address all comments (including
    nitpicks) before considering the ticket done. CodeRabbit is done when all discussions
    are resolved and no CodeRabbit CI run is in progress.
@@ -166,12 +205,18 @@ PROMPT
 # ---------------------------------------------------------------------------
 
 echo ""
-echo "Launching Claude agent for ${TICKET_ID_UPPER} (log: ${LOG_FILE})..."
+echo "Launching ${AGENT_LABEL} agent for ${TICKET_ID_UPPER} (log: ${LOG_FILE})..."
 echo ""
 
-docker compose -f docker-compose.ticket.yml exec -T ticket-dev \
-  bash -c 'claude --dangerously-skip-permissions -p "$(cat /workspace/.agent-prompt.txt)"' \
-  2>&1 | tee "${LOG_FILE}"
+if [[ "${AGENT_CLI}" == "cursor" ]]; then
+  docker compose -f docker-compose.ticket.yml exec -T ticket-dev \
+    bash -c 'cursor-agent -p --force --sandbox disabled "$(cat /workspace/.agent-prompt.txt)"' \
+    2>&1 | tee "${LOG_FILE}"
+else
+  docker compose -f docker-compose.ticket.yml exec -T ticket-dev \
+    bash -c 'claude --dangerously-skip-permissions -p "$(cat /workspace/.agent-prompt.txt)"' \
+    2>&1 | tee "${LOG_FILE}"
+fi
 
 AGENT_EXIT=${PIPESTATUS[0]}
 
