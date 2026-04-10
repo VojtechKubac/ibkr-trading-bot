@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from decimal import Decimal
 from dataclasses import dataclass
 from typing import Literal
@@ -93,11 +94,12 @@ def run_backtest(
     df_with_indicators: pd.DataFrame,
     *,
     cfg: BacktestConfig | None = None,
+    signal_fn: Callable[[pd.Series], Signal] | None = None,
 ) -> BacktestResult:
     """
     Single-asset backtest with optional commission costs and stop-loss simulation.
 
-    - Uses Phase 1 signal on each bar.
+    - Uses ``signal_fn`` (default: :func:`rule_phase1_signal_for_row`) on each bar.
     - Enters/exits using either fixed share size or percent-of-equity sizing.
     - Commission is deducted on both BUY and SELL.
     - Orders are executed on the next bar to avoid same-bar signal/fill bias.
@@ -106,11 +108,18 @@ def run_backtest(
     - Execution price uses ``adj_close`` when present, else ``close``.
     - At most one position open at a time (long or flat).
 
+    Args:
+        df_with_indicators: OHLCV DataFrame enriched with indicator columns.
+        cfg: Backtest configuration; uses defaults when None.
+        signal_fn: Callable ``(row: pd.Series) -> Signal``; defaults to
+            :func:`~trading_bot.signals.rule_phase1_signal_for_row`.
+
     Raises:
         ValueError: If ``df_with_indicators`` is empty.
     """
     if cfg is None:
         cfg = BacktestConfig()
+    _signal_fn = signal_fn if signal_fn is not None else rule_phase1_signal_for_row
 
     if df_with_indicators.empty:
         raise ValueError("df_with_indicators must contain at least one row")
@@ -176,7 +185,7 @@ def run_backtest(
 
         pending_side = None
         pending_stop_loss = False
-        signal: Signal = rule_phase1_signal_for_row(row)
+        signal: Signal = _signal_fn(row)
 
         # Stop-loss overrides the signal when the position is open.
         stop_loss_triggered = False
