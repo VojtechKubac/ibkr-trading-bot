@@ -46,6 +46,20 @@ if [[ ${#TICKETS[@]} -eq 0 ]]; then
   exit 1
 fi
 
+# Deduplicate ticket IDs while preserving order; warn on duplicates.
+declare -A _SEEN
+DEDUPED=()
+for t in "${TICKETS[@]}"; do
+  if [[ -n "${_SEEN[${t}]:-}" ]]; then
+    echo "Warning: duplicate ticket ID '${t}' ignored." >&2
+  else
+    _SEEN["${t}"]=1
+    DEDUPED+=("${t}")
+  fi
+done
+TICKETS=("${DEDUPED[@]}")
+unset _SEEN DEDUPED
+
 if [[ "${DRY_RUN}" == true ]]; then
   echo "Dry run — would launch ${#TICKETS[@]} ticket(s) with MAX_PARALLEL=${MAX_PARALLEL}:"
   for t in "${TICKETS[@]}"; do
