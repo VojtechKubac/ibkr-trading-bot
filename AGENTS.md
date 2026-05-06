@@ -77,13 +77,14 @@ DRYRUN=true python runweekly.py                      # coming soon
 
 When you (a host-level agent) are asked to implement a ticket and your working directory is the main repository checkout (not a ticket worktree), **do not implement the ticket yourself**. Instead:
 
-1. Run `./scripts/run-ticket.sh <ticket-id>` — this fetches the ticket from Linear, creates the worktree, starts the container, and launches a `claude --dangerously-skip-permissions` agent inside the container to do the coding.
+1. Run `./scripts/run-ticket.sh <ticket-id>` — this fetches the ticket from Linear, creates the worktree, starts the container, and launches an in-container coding agent (Claude or Cursor). The orchestrator selects which agent to launch based on `run-ticket.sh` logic.
 2. Stream and monitor its output. If it fails, report the error and the log path (`../worktrees/<branch>/.agent.log`) to the user.
 3. Only intervene manually (implementing directly from the host) if the user explicitly asks you to, or if `run-ticket.sh` is unavailable or broken.
 
 ```bash
 # Required env vars must be set in the host shell before calling this:
-#   ANTHROPIC_API_KEY — for the in-container Claude agent
+#   ANTHROPIC_API_KEY — required when run-ticket.sh chooses Claude
+#   CURSOR_API_KEY    — required when run-ticket.sh chooses Cursor
 #   GH_TOKEN          — GitHub PAT with repo scope
 #   LINEAR_API_KEY    — Linear personal API key
 
