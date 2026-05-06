@@ -73,9 +73,27 @@ DRYRUN=true python runweekly.py                      # coming soon
 - **When working on an open PR, always check for merge conflicts first** (`git fetch origin main && git merge origin/main`). Resolve any conflicts before making further changes or pushing.
 - Do not merge your own PRs.
 
-### Required Agent Preflight (before coding)
+### Orchestrator role — implementing a ticket from the main clone
 
-Before making any implementation change, coding agents must verify the environment:
+When you (a host-level agent) are asked to implement a ticket and your working directory is the main repository checkout (not a ticket worktree), **do not implement the ticket yourself**. Instead:
+
+1. Run `./scripts/run-ticket.sh <ticket-id>` — this fetches the ticket from Linear, creates the worktree, starts the container, and launches an in-container coding agent (Claude or Cursor). The orchestrator selects which agent to launch based on `run-ticket.sh` logic.
+2. Stream and monitor its output. If it fails, report the error and the log path (`../worktrees/<branch>/.agent.log`) to the user.
+3. Only intervene manually (implementing directly from the host) if the user explicitly asks you to, or if `run-ticket.sh` is unavailable or broken.
+
+```bash
+# Required env vars must be set in the host shell before calling this:
+#   ANTHROPIC_API_KEY — required when run-ticket.sh chooses Claude
+#   CURSOR_API_KEY    — required when run-ticket.sh chooses Cursor
+#   GH_TOKEN          — GitHub PAT with repo scope
+#   LINEAR_API_KEY    — Linear personal API key
+
+./scripts/run-ticket.sh kua-123
+```
+
+### Required Agent Preflight (before coding — in-container agents only)
+
+Before making any implementation change, coding agents running **inside a ticket container** must verify the environment:
 
 1. Verify current path is a ticket worktree under `../worktrees/kua-*`.
 2. Check that `.ticket-env` exists in the current worktree.
@@ -91,7 +109,7 @@ set -a; source .ticket-env; set +a
 docker compose -f docker-compose.ticket.yml ps
 ```
 
-If the current environment is not a ticket worktree/container pair, agents must stop and prompt to bootstrap one first (using `./scripts/start-ticket-workflow.sh`), unless the user explicitly requests a quick/manual update from the main clone.
+If the current environment is not a ticket worktree/container pair, stop and report this to the user — do not proceed with coding.
 
 ### Ticket Environment Bootstrap
 
